@@ -15,6 +15,11 @@ class Settings(BaseSettings):
         default=SecretStr(DEV_ONLY_APP_SECRET_KEY),
         validate_default=True,
     )
+    storage_bucket: str = ""
+    storage_endpoint_url: str | None = None
+    storage_region: str | None = None
+    storage_access_key_id: SecretStr | None = None
+    storage_secret_access_key: SecretStr | None = None
 
     @field_validator("app_secret_key")
     @classmethod

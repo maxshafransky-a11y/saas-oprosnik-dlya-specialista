@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import boto3
 from botocore.exceptions import ClientError
 
 from app.documents_service import StorageHead
+
+if TYPE_CHECKING:
+    from app.config import Settings
 
 MAX_PRESIGN_SECONDS = 900
 
@@ -34,6 +37,24 @@ def _validate_ttl(expires_seconds: int) -> int:
 
 
 class S3Storage:
+    @classmethod
+    def from_settings(cls, settings: Settings) -> S3Storage:
+        return cls(
+            settings.storage_bucket,
+            endpoint_url=settings.storage_endpoint_url,
+            region_name=settings.storage_region,
+            access_key_id=(
+                settings.storage_access_key_id.get_secret_value()
+                if settings.storage_access_key_id is not None
+                else None
+            ),
+            secret_access_key=(
+                settings.storage_secret_access_key.get_secret_value()
+                if settings.storage_secret_access_key is not None
+                else None
+            ),
+        )
+
     def __init__(
         self,
         bucket: str,

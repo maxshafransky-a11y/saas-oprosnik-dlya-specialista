@@ -58,6 +58,26 @@ def test_production_accepts_explicit_secret_without_revealing_it() -> None:
     assert secret not in str(settings)
 
 
+def test_storage_settings_keep_credentials_secret() -> None:
+    access_key = "storage-access-key"
+    secret_key = "storage-secret-key"
+    settings = make_settings(
+        storage_bucket="private-health",
+        storage_endpoint_url="https://s3.example.test",
+        storage_region="ru-1",
+        storage_access_key_id=SecretStr(access_key),
+        storage_secret_access_key=SecretStr(secret_key),
+    )
+
+    assert settings.storage_bucket == "private-health"
+    assert settings.storage_endpoint_url == "https://s3.example.test"
+    assert settings.storage_region == "ru-1"
+    assert settings.storage_access_key_id.get_secret_value() == access_key
+    assert settings.storage_secret_access_key.get_secret_value() == secret_key
+    assert access_key not in repr(settings)
+    assert secret_key not in repr(settings)
+
+
 def test_short_secret_is_rejected_without_revealing_value() -> None:
     secret = "short-secret-value"
 
