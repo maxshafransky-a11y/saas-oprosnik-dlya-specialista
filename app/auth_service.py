@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -40,9 +41,12 @@ MAX_IP_CHALLENGES = 30
 MAX_OTP_ATTEMPTS = 5
 SESSION_IDLE_TTL = timedelta(days=14)
 SESSION_ABSOLUTE_TTL = timedelta(days=30)
-REQUEST_ID_MAX_LENGTH = 128
+REQUEST_ID_LENGTH = 32
 
 _OTP_CHALLENGE_DOMAIN = b"health-intake:otp-challenge:v1"
+_ISSUE_EMAIL_LOCK_DOMAIN = b"health-intake:issue-lock:email:v1"
+_ISSUE_IP_LOCK_DOMAIN = b"health-intake:issue-lock:ip:v1"
+_LOWERCASE_HEX = frozenset("0123456789abcdef")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,8 +113,8 @@ def _now(value: datetime | None) -> datetime:
 def _validate_request_id(request_id: str) -> None:
     if (
         not isinstance(request_id, str)
-        or not request_id.strip()
-        or len(request_id) > REQUEST_ID_MAX_LENGTH
+        or len(request_id) != REQUEST_ID_LENGTH
+        or any(character not in _LOWERCASE_HEX for character in request_id)
     ):
         raise ValueError("invalid request_id")
 
@@ -124,6 +128,40 @@ def _challenge_otp_hash(
         hashlib.sha256,
     ).digest()
     return fingerprint_otp(key, code)
+
+
+def _issue_lock_key(
+    secret: str | bytes | bytearray | memoryview,
+    domain: bytes,
+    workspace_id: UUID,
+    value: bytes,
+) -> int:
+    digest = hmac.new(
+        _hmac_key(secret),
+        domain + b"\0" + workspace_id.bytes + b"\0" + value,
+        hashlib.sha256,
+    ).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=True)
+
+
+def _lock_issue_scope(
+    session: Session,
+    secret: str | bytes | bytearray | memoryview,
+    workspace_id: UUID,
+    email_normalized: str,
+    ip_fingerprint: bytes,
+) -> None:
+    keys = {
+        _issue_lock_key(
+            secret,
+            _ISSUE_EMAIL_LOCK_DOMAIN,
+            workspace_id,
+            email_normalized.encode("utf-8"),
+        ),
+        _issue_lock_key(secret, _ISSUE_IP_LOCK_DOMAIN, workspace_id, ip_fingerprint),
+    }
+    for key in sorted(keys):
+        session.execute(select(func.pg_advisory_xact_lock(key)))
 
 
 def _challenge_is_usable(challenge: LoginChallenge, current: datetime) -> bool:
@@ -170,6 +208,19 @@ def _complete_challenge(
     request_id: str,
     current: datetime,
 ) -> AuthenticatedSession | None:
+    session.execute(
+        postgresql_insert(Client)
+        .values(
+            id=uuid4(),
+            workspace_id=challenge.workspace_id,
+            email_normalized=challenge.email_normalized,
+            email_display=challenge.email_normalized,
+            status=ClientStatus.ACTIVE,
+            last_access_at=current,
+            created_at=current,
+        )
+        .on_conflict_do_nothing(index_elements=[Client.workspace_id, Client.email_normalized])
+    )
     client = session.scalar(
         select(Client)
         .where(
@@ -182,24 +233,11 @@ def _complete_challenge(
     challenge.consumed_at = current
     _invalidate_sibling_challenges(session, challenge, current)
 
-    if client is not None and client.status == ClientStatus.DISABLED:
+    if client is None or client.status == ClientStatus.DISABLED:
         session.flush()
         return None
 
-    if client is None:
-        client = Client(
-            id=uuid4(),
-            workspace_id=challenge.workspace_id,
-            email_normalized=challenge.email_normalized,
-            email_display=challenge.email_normalized,
-            status=ClientStatus.ACTIVE,
-            last_access_at=current,
-            created_at=current,
-        )
-        session.add(client)
-        session.flush()
-    else:
-        client.last_access_at = current
+    client.last_access_at = current
 
     consent = Consent(
         id=uuid4(),
@@ -289,6 +327,7 @@ def issue_login_challenge(
     except (TypeError, ValueError):
         raise ChallengeUnavailable from None
 
+    _lock_issue_scope(session, secret, workspace_id, email_normalized, ip_fingerprint)
     window_start = current - RATE_WINDOW
     email_count = session.scalar(
         select(func.count(LoginChallenge.id)).where(

@@ -1,9 +1,11 @@
 import importlib
 import sys
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, suppress
 from dataclasses import FrozenInstanceError, fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Barrier, BrokenBarrierError, Event
 from uuid import uuid4
 
 import pytest
@@ -46,6 +48,8 @@ hash_session_token = security.hash_session_token
 
 BASE_NOW = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
 SECRET = "auth-service-test-secret"
+LOGIN_REQUEST_ID = "1" * 32
+OTP_REQUEST_ID = "2" * 32
 
 
 @contextmanager
@@ -160,7 +164,7 @@ def _wrong_code(otp):
 
 
 def _authenticate_magic(
-    runtime_url, workspace_id, challenge, *, now=BASE_NOW, request_id="login-1"
+    runtime_url, workspace_id, challenge, *, now=BASE_NOW, request_id=LOGIN_REQUEST_ID
 ):
     with _runtime_session(runtime_url, workspace_id) as session:
         return authenticate_magic_token(
@@ -172,7 +176,9 @@ def _authenticate_magic(
         )
 
 
-def _authenticate_otp(runtime_url, workspace_id, challenge, *, now=BASE_NOW, request_id="otp-1"):
+def _authenticate_otp(
+    runtime_url, workspace_id, challenge, *, now=BASE_NOW, request_id=OTP_REQUEST_ID
+):
     with _runtime_session(runtime_url, workspace_id) as session:
         return authenticate_otp(
             session,
@@ -231,6 +237,45 @@ def test_issue_login_challenge_uses_postgresql_fixture(migrated_database):
         runtime_engine.dispose()
 
     assert result.challenge_id
+
+
+def test_issue_serializes_concurrent_email_and_ip_transactions(migrated_database):
+    owner_url, runtime_url = migrated_database
+    workspace_id, _ = _seed_workspace(owner_url)
+    start = Barrier(2)
+    hold_successes = Barrier(2)
+
+    def issue_concurrently():
+        try:
+            with _runtime_session(runtime_url, workspace_id) as session:
+                start.wait(timeout=5)
+                result = issue_login_challenge(
+                    session,
+                    workspace_id=workspace_id,
+                    email="race@example.com",
+                    ip_address="192.0.2.40",
+                    consent=_consent(workspace_id),
+                    secret=SECRET,
+                    now=BASE_NOW,
+                )
+                with suppress(BrokenBarrierError):
+                    hold_successes.wait(timeout=1)
+                return result
+        except ChallengeUnavailable as error:
+            return error
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(issue_concurrently) for _ in range(2)]
+        outcomes = [future.result(timeout=10) for future in futures]
+
+    assert sum(isinstance(outcome, IssuedChallenge) for outcome in outcomes) == 1
+    assert sum(isinstance(outcome, ChallengeUnavailable) for outcome in outcomes) == 1
+    active = [
+        row
+        for row in _owner_rows(owner_url, LoginChallenge, workspace_id)
+        if row.consumed_at is None and row.invalidated_at is None
+    ]
+    assert len(active) == 1
 
 
 def test_issue_persists_only_fixed_size_secrets_and_returns_neutral_shape(migrated_database):
@@ -377,7 +422,7 @@ def test_otp_attempts_are_persisted_and_expiry_is_fail_closed(migrated_database)
                 challenge_id=challenge.challenge_id,
                 code="abc123",
                 secret=SECRET,
-                request_id="malformed-code",
+                request_id="3" * 32,
                 now=BASE_NOW,
             )
             is None
@@ -393,7 +438,7 @@ def test_otp_attempts_are_persisted_and_expiry_is_fail_closed(migrated_database)
                     challenge_id=challenge.challenge_id,
                     code=wrong_code,
                     secret=SECRET,
-                    request_id=f"wrong-{attempt}",
+                    request_id=f"{attempt:032x}",
                     now=BASE_NOW + timedelta(seconds=attempt),
                 )
                 is None
@@ -417,7 +462,7 @@ def test_otp_attempts_are_persisted_and_expiry_is_fail_closed(migrated_database)
                 challenge_id=expiring.challenge_id,
                 code=expiring.otp,
                 secret=SECRET,
-                request_id="expired",
+                request_id="4" * 32,
                 now=expiring.expires_at,
             )
             is None
@@ -450,7 +495,7 @@ def test_magic_and_otp_consume_each_challenge_only_once(migrated_database):
                 challenge_id=magic_first.challenge_id,
                 code=magic_first.otp,
                 secret=SECRET,
-                request_id="otp-after-magic",
+                request_id="5" * 32,
                 now=BASE_NOW + timedelta(seconds=1),
             )
             is None
@@ -476,7 +521,7 @@ def test_magic_and_otp_consume_each_challenge_only_once(migrated_database):
                 session,
                 token=otp_first.magic_token,
                 secret=SECRET,
-                request_id="magic-after-otp",
+                request_id="6" * 32,
                 now=BASE_NOW + timedelta(seconds=62),
             )
             is None
@@ -516,6 +561,69 @@ def test_new_client_login_is_atomic_and_records_consent_session_and_audit(migrat
     assert result.token not in str(audits[0].metadata_jsonb)
 
 
+def test_new_client_login_survives_concurrent_natural_key_insert(migrated_database):
+    owner_url, runtime_url = migrated_database
+    workspace_id, _ = _seed_workspace(owner_url)
+    email = "client-race@example.com"
+    challenge = _issue(
+        runtime_url,
+        workspace_id,
+        email=email,
+        ip_address="192.0.2.41",
+    )
+    inserted = Event()
+    auth_started = Event()
+    hold_insert = Barrier(2)
+    concurrent_client_id = uuid4()
+
+    def insert_client_concurrently():
+        engine = create_engine(owner_url, poolclass=NullPool)
+        try:
+            with Session(engine) as session, session.begin():
+                session.add(
+                    Client(
+                        id=concurrent_client_id,
+                        workspace_id=workspace_id,
+                        email_normalized=email,
+                        email_display=email,
+                        status=ClientStatus.ACTIVE,
+                        created_at=BASE_NOW,
+                    )
+                )
+                session.flush()
+                inserted.set()
+                assert auth_started.wait(timeout=5)
+                with suppress(BrokenBarrierError):
+                    hold_insert.wait(timeout=1)
+        finally:
+            engine.dispose()
+
+    def authenticate_concurrently():
+        assert inserted.wait(timeout=5)
+        auth_started.set()
+        try:
+            return _authenticate_magic(
+                runtime_url,
+                workspace_id,
+                challenge,
+                request_id="c" * 32,
+            )
+        finally:
+            with suppress(BrokenBarrierError):
+                hold_insert.wait(timeout=2)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        insert_future = executor.submit(insert_client_concurrently)
+        auth_future = executor.submit(authenticate_concurrently)
+        insert_future.result(timeout=10)
+        result = auth_future.result(timeout=10)
+
+    assert isinstance(result, AuthenticatedSession)
+    assert result.client_id == concurrent_client_id
+    assert len(_owner_rows(owner_url, Client, workspace_id)) == 1
+    assert len(_owner_rows(owner_url, SessionRecord, workspace_id)) == 1
+
+
 def test_existing_client_is_reused_and_disabled_client_gets_no_session(migrated_database):
     owner_url, runtime_url = migrated_database
     workspace_id, existing_id = _seed_workspace(
@@ -548,7 +656,7 @@ def test_existing_client_is_reused_and_disabled_client_gets_no_session(migrated_
             workspace_id,
             disabled_challenge,
             now=BASE_NOW + timedelta(seconds=61),
-            request_id="disabled-login",
+            request_id="7" * 32,
         )
         is None
     )
@@ -623,7 +731,7 @@ def test_session_parse_hash_workspace_touch_expiry_and_revoke(migrated_database)
             revoke_session(
                 session,
                 token=authenticated.token,
-                request_id="logout-1",
+                request_id="8" * 32,
                 now=BASE_NOW + timedelta(days=21),
             )
             is True
@@ -639,7 +747,7 @@ def test_session_parse_hash_workspace_touch_expiry_and_revoke(migrated_database)
             revoke_session(
                 session,
                 token=authenticated.token,
-                request_id="logout-2",
+                request_id="9" * 32,
                 now=BASE_NOW + timedelta(days=22),
             )
             is False
@@ -681,7 +789,7 @@ def test_session_parse_hash_workspace_touch_expiry_and_revoke(migrated_database)
             revoke_session(
                 session,
                 token=idle_session.token,
-                request_id="idle-logout",
+                request_id="a" * 32,
                 now=BASE_NOW + timedelta(days=2),
             )
             is False
@@ -721,14 +829,23 @@ def test_session_parse_hash_workspace_touch_expiry_and_revoke(migrated_database)
 def test_request_id_is_validated_before_auth_mutation(migrated_database):
     owner_url, runtime_url = migrated_database
     workspace_id, _ = _seed_workspace(owner_url)
+    canonical_ip = "192.0.2.32"
     challenge = _issue(
         runtime_url,
         workspace_id,
         email="request-id@example.com",
-        ip_address="192.0.2.32",
+        ip_address=canonical_ip,
     )
 
-    for request_id in ("", "x" * 129):
+    for request_id in (
+        "",
+        "0" * 31,
+        "0" * 33,
+        "A" * 32,
+        "g" * 32,
+        challenge.magic_token,
+        canonical_ip,
+    ):
         with (
             _runtime_session(runtime_url, workspace_id) as session,
             pytest.raises(ValueError, match="invalid request_id"),
@@ -740,9 +857,63 @@ def test_request_id_is_validated_before_auth_mutation(migrated_database):
                 request_id=request_id,
                 now=BASE_NOW,
             )
+    with (
+        _runtime_session(runtime_url, workspace_id) as session,
+        pytest.raises(ValueError, match="invalid request_id"),
+    ):
+        authenticate_otp(
+            session,
+            workspace_id=workspace_id,
+            challenge_id=challenge.challenge_id,
+            code=challenge.otp,
+            secret=SECRET,
+            request_id=challenge.otp,
+            now=BASE_NOW,
+        )
     row = _owner_rows(owner_url, LoginChallenge, workspace_id)[0]
     assert row.consumed_at is None
     assert row.invalidated_at is None
+    assert row.attempt_count == 0
+
+    session_challenge = _issue(
+        runtime_url,
+        workspace_id,
+        email="session-request-id@example.com",
+        ip_address="192.0.2.34",
+    )
+    authenticated = _authenticate_magic(
+        runtime_url,
+        workspace_id,
+        session_challenge,
+        request_id="d" * 32,
+    )
+    assert authenticated is not None
+    with (
+        _runtime_session(runtime_url, workspace_id) as session,
+        pytest.raises(ValueError, match="invalid request_id"),
+    ):
+        revoke_session(
+            session,
+            token=authenticated.token,
+            request_id=authenticated.token,
+            now=BASE_NOW,
+        )
+
+    stored_session = _owner_rows(owner_url, SessionRecord, workspace_id)[0]
+    assert stored_session.revoked_at is None
+    audits = _owner_rows(owner_url, AuditEvent, workspace_id)
+    assert len(audits) == 1
+    sensitive_values = (
+        challenge.magic_token,
+        challenge.otp,
+        canonical_ip,
+        authenticated.token,
+    )
+    for audit in audits:
+        audit_payload = f"{audit.request_id} {audit.metadata_jsonb}"
+        assert len(audit.request_id) == 32
+        assert all(character in "0123456789abcdef" for character in audit.request_id)
+        assert all(value not in audit_payload for value in sensitive_values)
 
 
 def test_login_side_effects_rollback_with_the_caller_transaction(migrated_database):
@@ -766,7 +937,7 @@ def test_login_side_effects_rollback_with_the_caller_transaction(migrated_databa
             session,
             token=challenge.magic_token,
             secret=SECRET,
-            request_id="rollback-login",
+            request_id="b" * 32,
             now=BASE_NOW,
         )
         assert isinstance(result, AuthenticatedSession)
