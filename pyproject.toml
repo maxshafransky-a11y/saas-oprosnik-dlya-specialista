@@ -1,0 +1,37 @@
+[project]
+name = "health-intake"
+version = "0.1.0"
+description = "Secure fixed-questionnaire health intake MVP"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "jinja2",
+    "sqlalchemy>=2,<3",
+    "psycopg[binary]>=3,<4",
+    "alembic",
+    "pydantic-settings",
+    "python-multipart",
+    "email-validator",
+    "boto3",
+    "uvicorn[standard]",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx",
+    "playwright",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+strict_markers = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

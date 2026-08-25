@@ -1,0 +1,27 @@
+# Python
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Environment and coverage
+.env
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Playwright and process artifacts
+.playwright-mcp/
+.superpowers/sdd/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+Desktop.ini
