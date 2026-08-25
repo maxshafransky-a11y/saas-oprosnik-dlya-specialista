@@ -15,7 +15,7 @@ from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.pool import NullPool
 
-from app import documents_service
+from app import documents_scan_service, documents_service
 from app.models import Client, ClientStatus, Workspace, WorkspaceStatus
 
 pytest_plugins = ("tests.db_test_support",)
@@ -25,6 +25,7 @@ pytest_plugins = ("tests.db_test_support",)
 class FakeStorage:
     sizes: dict[str, int] = field(default_factory=dict)
     presigned: list[tuple[str, str, int, int]] = field(default_factory=list)
+    downloads: list[tuple[str, int]] = field(default_factory=list)
     head_calls: list[str] = field(default_factory=list)
 
     def presign_put(
@@ -36,6 +37,10 @@ class FakeStorage:
     def head(self, object_key: str) -> documents_service.StorageHead:
         self.head_calls.append(object_key)
         return documents_service.StorageHead(size_bytes=self.sizes[object_key])
+
+    def presign_get(self, object_key: str, expires_seconds: int) -> str:
+        self.downloads.append((object_key, expires_seconds))
+        return f"https://storage.test/get/{object_key}"
 
 
 def _seed_client(owner_url: URL) -> tuple[UUID, UUID]:
@@ -312,5 +317,105 @@ def test_document_status_is_tenant_scoped(document_context, migrated_database) -
                 other_client_id,
                 intent.document_id,
             )
+    finally:
+        engine.dispose()
+
+
+def test_ready_document_gets_short_download_url_and_audit(document_context) -> None:
+    owner_url, engine, workspace_id, client_id = document_context
+    storage = FakeStorage()
+    try:
+        with _runtime_session(engine, workspace_id) as session:
+            intent = documents_service.create_upload_intent(
+                session,
+                workspace_id,
+                client_id,
+                original_name="analysis.pdf",
+                declared_mime="application/pdf",
+                size_bytes=42,
+                storage=storage,
+                request_id="3" * 32,
+            )
+            session.commit()
+        storage.sizes[intent.object_key] = 42
+        with _runtime_session(engine, workspace_id) as session:
+            documents_service.complete_upload(
+                session,
+                workspace_id,
+                client_id,
+                intent.document_id,
+                storage=storage,
+                request_id="4" * 32,
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            documents_scan_service.claim_scan_jobs(session, workspace_id)
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            documents_scan_service.finish_scan(
+                session,
+                workspace_id,
+                client_id,
+                intent.document_id,
+                outcome=documents_scan_service.ScanOutcome(
+                    clean=True, detected_mime="application/pdf", sha256="a" * 64
+                ),
+                request_id="8" * 32,
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            result = documents_service.get_download_url(
+                session,
+                workspace_id,
+                client_id,
+                intent.document_id,
+                storage=storage,
+                request_id="5" * 32,
+            )
+            session.commit()
+    finally:
+        engine.dispose()
+
+    assert result.download_url == f"https://storage.test/get/{intent.object_key}"
+    assert storage.downloads == [(intent.object_key, 300)]
+    audits = _owner_rows(
+        owner_url,
+        workspace_id,
+        "SELECT event_type, request_id, metadata_jsonb FROM audit_events ORDER BY created_at",
+    )
+    assert audits[-1] == {
+        "event_type": "document_downloaded",
+        "request_id": "5" * 32,
+        "metadata_jsonb": {},
+    }
+    assert "analysis.pdf" not in str(audits)
+
+
+def test_uploading_document_cannot_be_downloaded(document_context) -> None:
+    _, engine, workspace_id, client_id = document_context
+    try:
+        with _runtime_session(engine, workspace_id) as session:
+            intent = documents_service.create_upload_intent(
+                session,
+                workspace_id,
+                client_id,
+                original_name="analysis.pdf",
+                declared_mime="application/pdf",
+                size_bytes=1,
+                storage=FakeStorage(),
+                request_id="6" * 32,
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            with pytest.raises(documents_service.InvalidDocumentState):
+                documents_service.get_download_url(
+                    session,
+                    workspace_id,
+                    client_id,
+                    intent.document_id,
+                    storage=FakeStorage(),
+                    request_id="7" * 32,
+                )
+            session.rollback()
     finally:
         engine.dispose()

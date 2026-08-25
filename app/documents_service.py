@@ -16,6 +16,7 @@ from app.models import AuditEvent, Document, DocumentStatus
 MAX_DOCUMENT_SIZE = 25 * 1024 * 1024
 MIN_DOCUMENT_SIZE = 1
 UPLOAD_URL_TTL_SECONDS = 600
+DOWNLOAD_URL_TTL_SECONDS = 300
 ALLOWED_DECLARED_MIMES = frozenset({"application/pdf", "image/heic", "image/jpeg", "image/png"})
 _IDENTIFIER_RE = re.compile(r"[0-9a-f]{32}")
 
@@ -26,6 +27,8 @@ class StoragePort(Protocol):
     ) -> str: ...
 
     def head(self, object_key: str) -> StorageHead: ...
+
+    def presign_get(self, object_key: str, expires_seconds: int) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +45,7 @@ class DocumentResult:
     status: DocumentStatus
     object_key: str
     upload_url: str | None
+    download_url: str | None = None
 
 
 class InvalidUpload(ValueError):
@@ -110,7 +114,11 @@ def _validate_upload_metadata(
     return name, mime
 
 
-def _document_view(document: Document, upload_url: str | None = None) -> DocumentResult:
+def _document_view(
+    document: Document,
+    upload_url: str | None = None,
+    download_url: str | None = None,
+) -> DocumentResult:
     return DocumentResult(
         document_id=document.id,
         original_name=document.original_name,
@@ -119,6 +127,7 @@ def _document_view(document: Document, upload_url: str | None = None) -> Documen
         status=document.status,
         object_key=document.object_key,
         upload_url=upload_url,
+        download_url=download_url,
     )
 
 
@@ -184,6 +193,40 @@ def get_document_status(
     session: Session, workspace_id: UUID, client_id: UUID, document_id: UUID
 ) -> DocumentResult:
     return _document_view(_load_document(session, workspace_id, client_id, document_id, lock=False))
+
+
+def get_download_url(
+    session: Session,
+    workspace_id: UUID,
+    client_id: UUID,
+    document_id: UUID,
+    *,
+    storage: StoragePort,
+    request_id: str,
+) -> DocumentResult:
+    _validate_request_id(request_id)
+    document = _load_document(session, workspace_id, client_id, document_id, lock=False)
+    if document.status is not DocumentStatus.READY:
+        raise InvalidDocumentState("document is not ready")
+    download_url = storage.presign_get(document.object_key, DOWNLOAD_URL_TTL_SECONDS)
+    if not isinstance(download_url, str) or not download_url:
+        raise UploadIncomplete("storage did not return a download URL")
+    session.add(
+        AuditEvent(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            client_id=client_id,
+            actor_type="client",
+            event_type="document_downloaded",
+            target_type="document",
+            target_id=document.id,
+            occurred_at=datetime.now(UTC),
+            request_id=request_id,
+            metadata_jsonb={},
+        )
+    )
+    session.flush()
+    return _document_view(document, download_url=download_url)
 
 
 def complete_upload(
