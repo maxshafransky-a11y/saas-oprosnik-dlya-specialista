@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Безопасный вход в анкету профиля здоровья">
+    <title>Вход · Профиль здоровья</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Перейти к форме</a>
+    <main id="main-content" class="main-content" tabindex="-1">
+      <div class="content-frame">
+        <header class="section-header">
+          <div>
+            <p class="eyebrow accent">Профиль здоровья</p>
+            <h1>{{ workspace_name }}</h1>
+            <p class="section-intro">
+              Личная анкета для подготовки к консультации. Ваши ответы сохраняются только в защищённой карточке.
+            </p>
+          </div>
+        </header>
+
+        <section class="question-card" aria-labelledby="access-title">
+          {% if mode == "consent" %}
+            <h2 id="access-title">Перед началом</h2>
+            <p>{{ consent_text }}</p>
+            {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+            <form method="post" action="/i/{{ public_slug }}/consent">
+              <label class="choice-option">
+                <input type="checkbox" name="consent" value="on">
+                <span>Я прочитал(а) и согласен(на) продолжить</span>
+              </label>
+              <div class="form-actions">
+                <span></span>
+                <button class="primary-button" type="submit">Продолжить <span aria-hidden="true">→</span></button>
+              </div>
+            </form>
+          {% else %}
+            <h2 id="access-title">Войти в анкету</h2>
+            <p>Введите email. Мы отправим короткую ссылку для входа и запасной код.</p>
+            <form method="post" action="/i/{{ public_slug }}/access">
+              <label class="field-label" for="email">Email</label>
+              <input class="text-input" id="email" name="email" type="email" autocomplete="email" required>
+              <div class="form-actions">
+                <span></span>
+                <button class="primary-button" type="submit">Получить ссылку <span aria-hidden="true">→</span></button>
+              </div>
+            </form>
+          {% endif %}
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

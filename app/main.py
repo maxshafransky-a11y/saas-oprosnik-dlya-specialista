@@ -8,8 +8,17 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.access import (
+    CONSENT_COOKIE_NAME,
+    CONSENT_TEXT,
+    CONSENT_TTL_SECONDS,
+    find_active_workspace,
+    issue_workspace_consent,
+    verify_workspace_consent,
+)
 from app.answers import is_question_visible
 from app.config import get_settings
+from app.db import session_scope
 from app.questionnaire import Question, load_questionnaire
 from app.questionnaire_service import RevisionConflict, get_questionnaire_state, save_answers
 from app.web_auth import (
@@ -53,6 +62,95 @@ def create_app() -> FastAPI:
     @application.get("/health", include_in_schema=False)
     async def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
+
+    def access_workspace(public_slug: str):
+        with session_scope() as session:
+            workspace = find_active_workspace(session, public_slug)
+            if workspace is None:
+                raise HTTPException(status_code=404, detail="invite not found")
+            return SimpleNamespace(
+                id=workspace.id,
+                name=workspace.name,
+                public_slug=workspace.public_slug,
+            )
+
+    def render_access(
+        request: Request,
+        workspace,
+        *,
+        mode: str,
+        error: str | None = None,
+        status_code: int = 200,
+    ):
+        return templates.TemplateResponse(
+            request=request,
+            name="access.html",
+            context={
+                "workspace_name": workspace.name,
+                "public_slug": workspace.public_slug,
+                "consent_text": CONSENT_TEXT,
+                "mode": mode,
+                "error": error,
+            },
+            status_code=status_code,
+        )
+
+    def secure_cookie() -> bool:
+        return get_settings().app_env.strip().casefold() not in {"development", "test"}
+
+    @application.get("/i/{public_slug}", name="invite")
+    def invite(request: Request, public_slug: str):
+        workspace = access_workspace(public_slug)
+        return render_access(request, workspace, mode="consent")
+
+    @application.post("/i/{public_slug}/consent", name="accept_consent")
+    async def accept_consent(request: Request, public_slug: str):
+        workspace = access_workspace(public_slug)
+        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+            raise HTTPException(status_code=403, detail="invalid origin")
+        form = await request.form()
+        if form.get("consent") != "on":
+            return render_access(
+                request,
+                workspace,
+                mode="consent",
+                error="Поставьте галочку, чтобы продолжить.",
+                status_code=422,
+            )
+        token = issue_workspace_consent(
+            get_settings().app_secret_key.get_secret_value(),
+            workspace.id,
+        )
+        response = RedirectResponse(
+            url=f"/i/{workspace.public_slug}/access",
+            status_code=303,
+        )
+        response.set_cookie(
+            CONSENT_COOKIE_NAME,
+            token,
+            max_age=CONSENT_TTL_SECONDS,
+            secure=secure_cookie(),
+            httponly=True,
+            samesite="lax",
+            path="/i",
+        )
+        return response
+
+    @application.get("/i/{public_slug}/access", name="access")
+    def access(request: Request, public_slug: str):
+        workspace = access_workspace(public_slug)
+        token = request.cookies.get(CONSENT_COOKIE_NAME)
+        try:
+            if not token:
+                raise ValueError("missing consent")
+            verify_workspace_consent(
+                get_settings().app_secret_key.get_secret_value(),
+                token,
+                workspace.id,
+            )
+        except (TypeError, ValueError):
+            return RedirectResponse(url=f"/i/{workspace.public_slug}", status_code=303)
+        return render_access(request, workspace, mode="email")
 
     def section_index(template, section_key: str | None) -> int:
         if section_key is None:

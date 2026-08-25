@@ -72,6 +72,31 @@ def authenticated_client(migrated_database):
         get_engine.cache_clear()
 
 
+@pytest.fixture
+def public_client(migrated_database):
+    owner_url, _ = migrated_database
+    workspace_id = uuid4()
+    public_slug = f"public-{workspace_id.hex}"
+    engine = create_engine(owner_url, poolclass=NullPool)
+    try:
+        with DbSession(engine) as session, session.begin():
+            session.add(
+                Workspace(
+                    id=workspace_id,
+                    name="Public test workspace",
+                    public_slug=public_slug,
+                )
+            )
+    finally:
+        engine.dispose()
+
+    get_engine.cache_clear()
+    try:
+        yield TestClient(create_app()), public_slug
+    finally:
+        get_engine.cache_clear()
+
+
 def test_health_is_available_without_openapi_surface() -> None:
     client = TestClient(create_app())
 
@@ -102,6 +127,41 @@ def test_security_headers_are_present_on_html_and_json_responses() -> None:
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
+
+
+def test_public_invite_requires_consent_and_opens_email_access(public_client) -> None:
+    client, public_slug = public_client
+
+    page = client.get(f"/i/{public_slug}")
+    assert page.status_code == 200
+    assert "Перед началом" in page.text
+    assert 'name="consent"' in page.text
+
+    rejected = client.post(f"/i/{public_slug}/consent", data={})
+    assert rejected.status_code == 422
+    assert "Поставьте галочку" in rejected.text
+
+    accepted = client.post(
+        f"/i/{public_slug}/consent",
+        data={"consent": "on"},
+        follow_redirects=False,
+    )
+    assert accepted.status_code == 303
+    assert accepted.headers["location"] == f"/i/{public_slug}/access"
+    assert "health_intake_consent=" in accepted.headers["set-cookie"]
+
+    access_page = client.get(accepted.headers["location"])
+    assert access_page.status_code == 200
+    assert 'name="email"' in access_page.text
+
+
+def test_email_access_requires_consent(public_client) -> None:
+    client, public_slug = public_client
+
+    response = client.get(f"/i/{public_slug}/access", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/i/{public_slug}"
 
 
 def test_questionnaire_route_renders_canonical_section_and_static_css() -> None:
