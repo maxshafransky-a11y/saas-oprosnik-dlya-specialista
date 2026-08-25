@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     storage_region: str | None = None
     storage_access_key_id: SecretStr | None = None
     storage_secret_access_key: SecretStr | None = None
+    public_base_url: str = "http://localhost:8000"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: SecretStr | None = None
+    smtp_from: str = ""
+    smtp_starttls: bool = True
 
     @field_validator("app_secret_key")
     @classmethod
