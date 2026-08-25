@@ -1,0 +1,158 @@
+{% macro answer_for(question) -%}
+  {% set answer = state.answers.get(question.key) or {} %}
+  {{ answer }}
+{%- endmacro %}
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Личная анкета для подготовки к консультации">
+    <title>{{ template.title }} · {{ active_section.title }}</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Перейти к анкете</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Навигация по анкете">
+        <div class="brand-mark" aria-hidden="true">ПЗ</div>
+        <p class="eyebrow">Личная анкета</p>
+        <h1 class="brand-title">{{ template.title }}</h1>
+        <p class="brand-copy">Подготовка к консультации в спокойном темпе.</p>
+
+        <div class="progress-block" aria-label="Прогресс анкеты">
+          <div class="progress-meta">
+            <span>Заполнено {{ state.progress_percent }}%</span>
+            <span>{{ state.completed_count }} из {{ state.question_count }}</span>
+          </div>
+          <div class="progress-track" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ state.progress_percent }}">
+            <span style="width: {{ state.progress_percent }}%"></span>
+          </div>
+        </div>
+
+        <nav class="section-nav" aria-label="Разделы">
+          <p class="nav-label">Разделы анкеты</p>
+          <ol>
+            {% for section in template.sections %}
+              <li>
+                <a class="section-link{% if section.key == active_section.key %} is-active{% endif %}"
+                   href="?section={{ section.key }}"
+                   {% if section.key == active_section.key %}aria-current="step"{% endif %}>
+                  <span class="section-index">{{ "%02d"|format(loop.index) }}</span>
+                  <span>{{ section.title }}</span>
+                </a>
+              </li>
+            {% endfor %}
+          </ol>
+        </nav>
+      </aside>
+
+      <main id="main-content" class="main-content" tabindex="-1">
+        <div class="content-frame">
+          <header class="section-header">
+            <div>
+              <p class="eyebrow accent">Раздел {{ active_section_index }} из {{ template.sections|length }}</p>
+              <h2>{{ active_section.title }}</h2>
+              <p class="section-intro">{{ section_intro }}</p>
+            </div>
+            <div class="save-status" role="status" aria-live="polite">
+              <span class="save-dot" aria-hidden="true"></span>
+              <span data-save-status>Сохранено</span>
+            </div>
+          </header>
+
+          <form class="questionnaire-form" method="post" action="#"
+                data-questionnaire-form data-section-key="{{ active_section.key }}"
+                data-revision="{{ state.current_revision }}" novalidate>
+            <input type="hidden" name="revision" value="{{ state.current_revision }}">
+            <input type="hidden" name="section_key" value="{{ active_section.key }}">
+
+            {% for question in active_section.questions %}
+              {% set answer = state.answers.get(question.key) or {} %}
+              {% set answer_value = answer.get("value", "") %}
+              {% set answer_comment = answer.get("comment", "") %}
+              <fieldset class="question-card" data-question-key="{{ question.key }}">
+                <legend>
+                  <span class="question-number">{{ "%02d"|format(question.source_number) }}</span>
+                  <span class="question-label">{{ question.label }}</span>
+                  {% if question.required %}<span class="required-mark" title="Обязательный вопрос">*</span>{% endif %}
+                </legend>
+
+                {% if question.helper %}
+                  <p class="question-helper">{{ question.helper }}</p>
+                {% endif %}
+
+                {% if question.type in ["text", "date_or_age"] %}
+                  <label class="field-label" for="{{ question.key }}">Ваш ответ</label>
+                  <input class="text-input" id="{{ question.key }}" name="{{ question.key }}"
+                         type="{% if question.type == 'date_or_age' %}text{% else %}text{% endif %}"
+                         value="{{ answer_value }}"{% if question.required %} required{% endif %}
+                         autocomplete="off">
+                {% elif question.type == "number" %}
+                  <label class="field-label" for="{{ question.key }}">Введите значение{% if question.unit %}, {{ question.unit }}{% endif %}</label>
+                  <div class="input-with-unit">
+                    <input class="text-input" id="{{ question.key }}" name="{{ question.key }}"
+                           type="number" inputmode="decimal" value="{{ answer_value }}"{% if question.required %} required{% endif %}>
+                    {% if question.unit %}<span class="unit">{{ question.unit }}</span>{% endif %}
+                  </div>
+                {% elif question.type == "textarea" %}
+                  <label class="field-label" for="{{ question.key }}">Ваш ответ</label>
+                  <textarea class="text-input textarea" id="{{ question.key }}" name="{{ question.key }}"
+                            rows="5"{% if question.required %} required{% endif %}>{{ answer_value }}</textarea>
+                {% elif question.type == "single_choice" %}
+                  <div class="choice-grid" role="radiogroup" aria-label="{{ question.label }}">
+                    {% for option in question.options %}
+                      <label class="choice-option">
+                        <input type="radio" name="{{ question.key }}" value="{{ option }}"
+                               {% if answer_value == option %}checked{% endif %}{% if question.required %} required{% endif %}>
+                        <span>{{ option }}</span>
+                      </label>
+                    {% endfor %}
+                  </div>
+                {% elif question.type == "multi_choice" %}
+                  <div class="choice-grid" aria-label="{{ question.label }}">
+                    {% for option in question.options %}
+                      <label class="choice-option">
+                        <input type="checkbox" name="{{ question.key }}" value="{{ option }}"
+                               {% if option in answer_value %}checked{% endif %}>
+                        <span>{{ option }}</span>
+                      </label>
+                    {% endfor %}
+                  </div>
+                {% elif question.type == "scale" %}
+                  <div class="scale-field">
+                    <input class="scale-input" id="{{ question.key }}" name="{{ question.key }}"
+                           type="range" min="{{ question.scale.min }}" max="{{ question.scale.max }}"
+                           value="{{ answer_value or question.scale.min }}"{% if question.required %} required{% endif %}>
+                    <div class="scale-meta"><span>{{ question.scale.min }}</span><output for="{{ question.key }}">{{ answer_value or question.scale.min }}</output><span>{{ question.scale.max }}</span></div>
+                  </div>
+                {% elif question.type == "document_upload" %}
+                  <label class="upload-zone" for="{{ question.key }}">
+                    <span class="upload-icon" aria-hidden="true">↑</span>
+                    <span><strong>Добавьте анализы или заключения</strong><small>PDF, JPG, PNG или HEIC · до 25 МБ</small></span>
+                    <input id="{{ question.key }}" name="{{ question.key }}" type="file"
+                           accept="application/pdf,image/jpeg,image/png,image/heic">
+                  </label>
+                {% endif %}
+
+                {% if question.comment_enabled %}
+                  <div class="comment-field">
+                    <label class="field-label" for="{{ question.key }}-comment">Можно добавить пояснение</label>
+                    <textarea class="text-input comment-input" id="{{ question.key }}-comment"
+                              name="{{ question.key }}__comment" rows="2">{{ answer_comment }}</textarea>
+                  </div>
+                {% endif %}
+              </fieldset>
+            {% endfor %}
+
+            <div class="form-actions">
+              <p class="autosave-note"><span class="save-dot" aria-hidden="true"></span>Ответы сохраняются автоматически</p>
+              <button class="primary-button" type="submit">Сохранить и продолжить <span aria-hidden="true">→</span></button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
