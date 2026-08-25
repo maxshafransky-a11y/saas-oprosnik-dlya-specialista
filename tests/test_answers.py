@@ -69,11 +69,21 @@ def test_exact_envelope_and_comment_preservation() -> None:
     questions = _questions(template)
     text = questions["full_name"]
     gender = questions["gender"]
+    no_question = next(
+        question
+        for question in questions.values()
+        if question.type == "single_choice" and "Нет" in question.options
+    )
+    no_option = next(option for option in no_question.options if option == "Нет")
 
     assert normalize_answer(text, {"value": " Anna\nSmith "}) == {"value": "Anna\nSmith"}
     assert normalize_answer(gender, {"value": gender.options[1], "comment": "  keep\nthis  "}) == {
         "value": gender.options[1],
         "comment": "keep\nthis",
+    }
+    assert normalize_answer(no_question, {"value": no_option, "comment": "  no details  "}) == {
+        "value": no_option,
+        "comment": "no details",
     }
     with pytest.raises(InvalidAnswer) as missing_comment:
         normalize_answer(gender, {"value": gender.options[1]})

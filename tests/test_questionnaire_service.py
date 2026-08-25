@@ -655,6 +655,42 @@ def test_idempotent_submit_is_single_append_and_other_key_is_read_only(
     assert len(_audit_rows(owner_url, workspace_id)) == 1
 
 
+def test_concurrent_idempotent_submit_is_single_append_and_audit(
+    migrated_database, questionnaire_context
+) -> None:
+    owner_url, _ = migrated_database
+    engine, _, workspace_id, client_id = questionnaire_context
+    template = load_questionnaire()
+    with _runtime_session(engine, workspace_id) as session:
+        revision = _complete_questionnaire(session, workspace_id, client_id, template)
+        session.commit()
+
+    barrier = Barrier(2)
+    idempotency_key = "a" * 32
+
+    def submit(request_id: str):
+        with _runtime_session(engine, workspace_id) as session:
+            barrier.wait()
+            result = questionnaire_service.submit_response(
+                session,
+                workspace_id=workspace_id,
+                client_id=client_id,
+                template=template,
+                expected_revision=revision,
+                idempotency_key=idempotency_key,
+                request_id=request_id,
+            )
+            session.commit()
+            return result
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(submit, ("b" * 32, "c" * 32)))
+
+    assert sorted(result.repeated for result in results) == [False, True]
+    assert len(_submission_rows(owner_url, workspace_id)) == 1
+    assert len(_audit_rows(owner_url, workspace_id)) == 1
+
+
 def test_edit_is_idempotent_and_new_submission_preserves_v1(
     migrated_database, questionnaire_context
 ) -> None:
