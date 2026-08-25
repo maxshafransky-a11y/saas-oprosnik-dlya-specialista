@@ -6,7 +6,7 @@
   "sections": [
     {
       "key": "personal_data",
-      "title": "Персональные данные",
+      "title": "Личные данные",
       "questions": [
         {
           "source_number": 1,
@@ -311,7 +311,7 @@
     },
     {
       "key": "gi_wellbeing",
-      "title": "ЖКТ, самочувствие",
+      "title": "ЖКТ и самочувствие",
       "questions": [
         {
           "source_number": 25,
@@ -443,7 +443,7 @@
     },
     {
       "key": "gender_health",
-      "title": "Женское/мужское здоровье",
+      "title": "Гендерное здоровье",
       "questions": [
         {
           "source_number": 34,
@@ -492,7 +492,7 @@
     },
     {
       "key": "activity_habits",
-      "title": "Физ. активность/привычки",
+      "title": "Активность и привычки",
       "questions": [
         {
           "source_number": 37,
@@ -562,7 +562,7 @@
     },
     {
       "key": "readiness_final",
-      "title": "Готовность/финал",
+      "title": "Готовность и детали",
       "questions": [
         {
           "source_number": 42,

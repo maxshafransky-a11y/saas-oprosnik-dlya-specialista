@@ -72,6 +72,18 @@ TYPE_MAP = {
     "Загрузка файлов": "document_upload",
 }
 SECTION_COUNTS = (7, 3, 2, 6, 6, 4, 5, 3, 5, 5)
+EXPECTED_SECTION_TITLES = (
+    "Личные данные",
+    "Образ жизни",
+    "Цели и мотивация",
+    "История здоровья",
+    "Питание",
+    "ЖКТ и самочувствие",
+    "Сон и стресс",
+    "Гендерное здоровье",
+    "Активность и привычки",
+    "Готовность и детали",
+)
 QUESTION_FIELDS = {
     "source_number",
     "key",
@@ -108,7 +120,6 @@ def _canonical_contract() -> dict:
             sections.append(
                 {
                     "number": int(section_match.group(1)),
-                    "title": section_match.group(2),
                     "declared_count": int(section_match.group(3)),
                     "questions": [],
                 }
@@ -164,8 +175,8 @@ def _read_json() -> dict:
     return json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
 
 
-def _load_invalid_payload(payload: dict) -> None:
-    path = ROOT / ".uv-cache" / "questionnaire-invalid-test.json"
+def _load_invalid_payload(tmp_path: Path, payload: dict) -> None:
+    path = tmp_path / "questionnaire-invalid-test.json"
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     try:
         load_questionnaire(path)
@@ -187,9 +198,7 @@ def test_template_matches_canonical_markdown() -> None:
     assert len(payload["sections"]) == 10
     assert [len(section["questions"]) for section in payload["sections"]] == list(SECTION_COUNTS)
     assert sum(SECTION_COUNTS) == 46
-    assert [section["title"] for section in payload["sections"]] == [
-        section["title"] for section in expected["sections"]
-    ]
+    assert [section["title"] for section in payload["sections"]] == list(EXPECTED_SECTION_TITLES)
 
     actual_questions = [
         question for section in payload["sections"] for question in section["questions"]
@@ -235,17 +244,26 @@ def test_requiredness_conditions_and_comment_policy() -> None:
     assert not {"options", "unit", "scale", "condition"} & by_number[46].keys()
 
 
-def test_loader_rejects_duplicate_key() -> None:
+def test_loader_rejects_duplicate_key(tmp_path: Path) -> None:
     payload = _read_json()
     payload["sections"][0]["questions"][1]["key"] = payload["sections"][0]["questions"][0]["key"]
 
     with pytest.raises(ValidationError):
-        _load_invalid_payload(payload)
+        _load_invalid_payload(tmp_path, payload)
 
 
-def test_loader_rejects_malformed_type_specific_shape() -> None:
+def test_loader_rejects_duplicate_options(tmp_path: Path) -> None:
+    payload = _read_json()
+    options = payload["sections"][0]["questions"][4]["options"]
+    options[1] = options[0]
+
+    with pytest.raises(ValidationError):
+        _load_invalid_payload(tmp_path, payload)
+
+
+def test_loader_rejects_malformed_type_specific_shape(tmp_path: Path) -> None:
     payload = _read_json()
     payload["sections"][0]["questions"][0]["options"] = ["неожиданный вариант"]
 
     with pytest.raises(ValidationError):
-        _load_invalid_payload(payload)
+        _load_invalid_payload(tmp_path, payload)
