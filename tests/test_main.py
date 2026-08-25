@@ -30,3 +30,21 @@ def test_security_headers_are_present_on_html_and_json_responses() -> None:
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
+
+
+def test_questionnaire_route_renders_canonical_section_and_static_css() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/questionnaire?section=nutrition")
+
+    assert response.status_code == 200
+    assert "Питание" in response.text
+    assert 'lang="ru"' in response.text
+    assert "/static/app.css" in response.text
+    assert client.get("/static/app.css").status_code == 200
+
+
+def test_questionnaire_route_rejects_unknown_section() -> None:
+    response = TestClient(create_app()).get("/questionnaire?section=unknown")
+
+    assert response.status_code == 404
