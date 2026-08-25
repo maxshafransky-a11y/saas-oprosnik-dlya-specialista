@@ -93,3 +93,6 @@ def test_env_example_names_dev_only_secret_contract() -> None:
 
     assert "APP_SECRET_KEY=" in source
     assert "dev-only" in source.lower()
+    assert "PUBLIC_BASE_URL=" in source
+    assert "SMTP_HOST=" in source
+    assert "SMTP_FROM=" in source

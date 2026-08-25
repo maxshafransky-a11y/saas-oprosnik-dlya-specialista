@@ -272,6 +272,35 @@ def test_invalid_email_code_does_not_create_session(public_workspace) -> None:
     assert "health_intake_session=" not in response.headers.get("set-cookie", "")
 
 
+def test_magic_link_exchange_creates_session(public_workspace) -> None:
+    sent: list[dict[str, object]] = []
+
+    def sender(settings, **message: object) -> None:
+        sent.append(message)
+
+    client = TestClient(create_app(email_sender=sender))
+    client.post(f"/i/{public_workspace}/consent", data={"consent": "on"})
+    client.post(
+        f"/i/{public_workspace}/access",
+        data={"email": "client@example.com"},
+    )
+
+    landing = client.get("/auth/magic")
+    assert landing.status_code == 200
+    assert "/static/auth.js" in landing.text
+
+    authenticated = client.post(
+        "/auth/magic",
+        data={"token": sent[0]["magic_token"]},
+        headers={"origin": "http://testserver"},
+        follow_redirects=False,
+    )
+
+    assert authenticated.status_code == 303
+    assert authenticated.headers["location"] == "/questionnaire"
+    assert "health_intake_session=" in authenticated.headers["set-cookie"]
+
+
 def test_questionnaire_route_renders_canonical_section_and_static_css() -> None:
     client = TestClient(create_app())
 

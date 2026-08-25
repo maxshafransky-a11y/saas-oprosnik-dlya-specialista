@@ -19,13 +19,18 @@ from app.access import (
     verify_workspace_consent,
 )
 from app.answers import is_question_visible
-from app.auth_service import ChallengeUnavailable, authenticate_otp, issue_login_challenge
+from app.auth_service import (
+    ChallengeUnavailable,
+    authenticate_magic_token,
+    authenticate_otp,
+    issue_login_challenge,
+)
 from app.config import get_settings
 from app.db import session_scope
 from app.email import EmailDeliveryError, send_login_email
 from app.questionnaire import Question, load_questionnaire
 from app.questionnaire_service import RevisionConflict, get_questionnaire_state, save_answers
-from app.security import canonical_ip
+from app.security import canonical_ip, parse_magic_token
 from app.web_auth import (
     SESSION_COOKIE_NAME,
     AuthenticatedRequest,
@@ -108,6 +113,19 @@ def create_app(email_sender: Callable[..., None] | None = None) -> FastAPI:
 
     def secure_cookie() -> bool:
         return get_settings().app_env.strip().casefold() not in {"development", "test"}
+
+    def authenticated_redirect(authenticated):
+        response = RedirectResponse(url="/questionnaire", status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE_NAME,
+            authenticated.token,
+            max_age=30 * 24 * 60 * 60,
+            secure=secure_cookie(),
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+        return response
 
     def request_ip(request: Request) -> str:
         host = request.client.host if request.client is not None else "127.0.0.1"
@@ -263,17 +281,48 @@ def create_app(email_sender: Callable[..., None] | None = None) -> FastAPI:
                 status_code=422,
             )
 
-        response = RedirectResponse(url="/questionnaire", status_code=303)
-        response.set_cookie(
-            SESSION_COOKIE_NAME,
-            authenticated.token,
-            max_age=30 * 24 * 60 * 60,
-            secure=secure_cookie(),
-            httponly=True,
-            samesite="lax",
-            path="/",
-        )
-        return response
+        return authenticated_redirect(authenticated)
+
+    def magic_workspace():
+        return SimpleNamespace(name="Профиль здоровья", public_slug="")
+
+    @application.get("/auth/magic", name="magic_landing")
+    def magic_landing(request: Request):
+        return render_access(request, magic_workspace(), mode="magic")
+
+    @application.post("/auth/magic", name="authenticate_magic")
+    async def authenticate_magic(request: Request):
+        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+            raise HTTPException(status_code=403, detail="invalid origin")
+        form = await request.form()
+        token = form_text(form.get("token"))
+        try:
+            parsed = parse_magic_token(token)
+        except (TypeError, ValueError):
+            return render_access(
+                request,
+                magic_workspace(),
+                mode="magic",
+                message="Ссылка недействительна или уже использована.",
+                status_code=422,
+            )
+
+        with session_scope(parsed.workspace_id) as session:
+            authenticated = authenticate_magic_token(
+                session,
+                token=token,
+                secret=get_settings().app_secret_key.get_secret_value(),
+                request_id=uuid4().hex,
+            )
+        if authenticated is None:
+            return render_access(
+                request,
+                magic_workspace(),
+                mode="magic",
+                message="Ссылка недействительна или уже использована.",
+                status_code=422,
+            )
+        return authenticated_redirect(authenticated)
 
     def section_index(template, section_key: str | None) -> int:
         if section_key is None:

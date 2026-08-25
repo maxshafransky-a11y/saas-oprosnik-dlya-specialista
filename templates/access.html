@@ -47,7 +47,7 @@
                 <button class="primary-button" type="submit">Получить ссылку <span aria-hidden="true">→</span></button>
               </div>
             </form>
-          {% else %}
+          {% elif mode == "code" %}
             <h2 id="access-title">Проверьте почту</h2>
             {% if message %}<p role="status">{{ message }}</p>{% endif %}
             <form method="post" action="/auth/code">
@@ -60,6 +60,14 @@
                 <button class="primary-button" type="submit">Войти по коду <span aria-hidden="true">→</span></button>
               </div>
             </form>
+          {% else %}
+            <h2 id="access-title">Открываем безопасную ссылку</h2>
+            <p data-magic-status role="status">Подождите, проверяем ссылку…</p>
+            <form data-magic-form method="post" action="/auth/magic">
+              <input type="hidden" name="token" value="">
+              <noscript>Для входа без JavaScript используйте шестизначный код из письма на странице входа.</noscript>
+            </form>
+            <script src="/static/auth.js" defer></script>
           {% endif %}
         </section>
       </div>
