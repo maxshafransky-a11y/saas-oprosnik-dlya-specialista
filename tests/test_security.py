@@ -2,7 +2,8 @@ import hashlib
 import hmac
 import importlib
 import sys
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import urlsafe_b64encode
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -62,16 +63,42 @@ def test_token_hashes_are_sha256_digests() -> None:
     assert token.encode() not in security.hash_magic_token(token)
 
 
-def test_session_tokens_are_unique_and_have_256_bits_of_entropy() -> None:
-    first = security.generate_session_token()
-    second = security.generate_session_token()
-    decoded = urlsafe_b64decode(first + "=" * (-len(first) % 4))
+def test_session_token_round_trip_uniqueness_entropy_and_hash() -> None:
+    workspace_id = uuid4()
+    session_id = uuid4()
+    first = security.generate_session_token(workspace_id, session_id)
+    second = security.generate_session_token(workspace_id, session_id)
+    parsed = security.parse_session_token(first)
     digest = security.hash_session_token(first)
 
     assert first != second
-    assert len(decoded) >= 32
+    assert parsed.workspace_id == workspace_id
+    assert parsed.session_id == session_id
+    assert len(parsed.secret_bytes) >= 32
     assert len(digest) == 32
+    assert digest == hashlib.sha256(first.encode()).digest()
     assert first.encode() not in digest
+    with pytest.raises(FrozenInstanceError):
+        parsed.session_id = uuid4()  # type: ignore[misc]
+
+
+def test_session_token_parser_rejects_malformed_values() -> None:
+    workspace_id = uuid4()
+    session_id = uuid4()
+    parsed = security.parse_session_token(security.generate_session_token(workspace_id, session_id))
+    short_secret = urlsafe_b64encode(b"x" * 31).decode().rstrip("=")
+
+    malformed = (
+        "not-a-token",
+        f"{workspace_id}.{session_id}.{short_secret}",
+        f"{workspace_id}.{session_id}.not valid",
+        f"{workspace_id}.{session_id}.{parsed.secret}.extra",
+        f"{str(workspace_id).upper()}.{session_id}.{parsed.secret}",
+        f"{workspace_id}.{str(session_id).upper()}.{parsed.secret}",
+    )
+    for token in malformed:
+        with pytest.raises(ValueError):
+            security.parse_session_token(token)
 
 
 def test_fingerprints_are_domain_separated_and_canonical() -> None:

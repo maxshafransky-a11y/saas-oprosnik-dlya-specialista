@@ -12,11 +12,12 @@ from email_validator import EmailNotValidError, validate_email
 
 OTP_LENGTH = 6
 MAGIC_SECRET_BYTES = 32
+SESSION_SECRET_BYTES = 32
 
 _OTP_DOMAIN = b"health-intake:otp:v1"
 _EMAIL_DOMAIN = b"health-intake:email:v1"
 _IP_DOMAIN = b"health-intake:ip:v1"
-_MAGIC_SECRET_ALPHABET = frozenset(
+_TOKEN_SECRET_ALPHABET = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 )
 
@@ -25,6 +26,14 @@ _MAGIC_SECRET_ALPHABET = frozenset(
 class MagicToken:
     workspace_id: UUID
     challenge_id: UUID
+    secret: str
+    secret_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class SessionToken:
+    workspace_id: UUID
+    session_id: UUID
     secret: str
     secret_bytes: bytes
 
@@ -44,8 +53,12 @@ def generate_otp() -> str:
     return f"{secrets.randbelow(10**OTP_LENGTH):0{OTP_LENGTH}d}"
 
 
-def generate_session_token() -> str:
-    return secrets.token_urlsafe(32)
+def generate_session_token(workspace_id: UUID, session_id: UUID) -> str:
+    if not isinstance(workspace_id, UUID) or not isinstance(session_id, UUID):
+        raise TypeError("workspace_id and session_id must be UUID values")
+
+    secret = secrets.token_urlsafe(SESSION_SECRET_BYTES)
+    return f"{workspace_id}.{session_id}.{secret}"
 
 
 def generate_magic_token(workspace_id: UUID, challenge_id: UUID) -> str:
@@ -60,17 +73,17 @@ def _parse_uuid(value: str) -> UUID:
     try:
         parsed = UUID(value)
     except (AttributeError, TypeError, ValueError):
-        raise ValueError("invalid magic token") from None
+        raise ValueError("invalid structured token") from None
     if str(parsed) != value:
-        raise ValueError("invalid magic token")
+        raise ValueError("invalid structured token")
     return parsed
 
 
-def _decode_magic_secret(value: str) -> bytes:
-    if not value or any(character not in _MAGIC_SECRET_ALPHABET for character in value):
-        raise ValueError("invalid magic token")
+def _decode_token_secret(value: str, minimum_bytes: int) -> bytes:
+    if not value or any(character not in _TOKEN_SECRET_ALPHABET for character in value):
+        raise ValueError("invalid structured token")
     if len(value) % 4 == 1:
-        raise ValueError("invalid magic token")
+        raise ValueError("invalid structured token")
 
     try:
         encoded = value.encode("ascii")
@@ -78,13 +91,13 @@ def _decode_magic_secret(value: str) -> bytes:
             encoded + b"=" * (-len(encoded) % 4), altchars=b"-_", validate=True
         )
     except (UnicodeEncodeError, ValueError):
-        raise ValueError("invalid magic token") from None
+        raise ValueError("invalid structured token") from None
 
-    if len(decoded) < MAGIC_SECRET_BYTES:
-        raise ValueError("invalid magic token")
+    if len(decoded) < minimum_bytes:
+        raise ValueError("invalid structured token")
     canonical = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii")
     if canonical != value:
-        raise ValueError("invalid magic token")
+        raise ValueError("invalid structured token")
     return decoded
 
 
@@ -98,8 +111,22 @@ def parse_magic_token(token: str) -> MagicToken:
 
     workspace_id = _parse_uuid(parts[0])
     challenge_id = _parse_uuid(parts[1])
-    secret_bytes = _decode_magic_secret(parts[2])
+    secret_bytes = _decode_token_secret(parts[2], MAGIC_SECRET_BYTES)
     return MagicToken(workspace_id, challenge_id, parts[2], secret_bytes)
+
+
+def parse_session_token(token: str) -> SessionToken:
+    if not isinstance(token, str):
+        raise TypeError("token must be a string")
+
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("invalid session token")
+
+    workspace_id = _parse_uuid(parts[0])
+    session_id = _parse_uuid(parts[1])
+    secret_bytes = _decode_token_secret(parts[2], SESSION_SECRET_BYTES)
+    return SessionToken(workspace_id, session_id, parts[2], secret_bytes)
 
 
 def _hash_token(token: str) -> bytes:
