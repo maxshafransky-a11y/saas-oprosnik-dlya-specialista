@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -17,11 +19,15 @@ from app.access import (
     verify_workspace_consent,
 )
 from app.answers import is_question_visible
+from app.auth_service import ChallengeUnavailable, authenticate_otp, issue_login_challenge
 from app.config import get_settings
 from app.db import session_scope
+from app.email import EmailDeliveryError, send_login_email
 from app.questionnaire import Question, load_questionnaire
 from app.questionnaire_service import RevisionConflict, get_questionnaire_state, save_answers
+from app.security import canonical_ip
 from app.web_auth import (
+    SESSION_COOKIE_NAME,
     AuthenticatedRequest,
     build_csrf_token,
     require_authenticated_session,
@@ -42,7 +48,8 @@ SECURITY_HEADERS = {
 }
 
 
-def create_app() -> FastAPI:
+def create_app(email_sender: Callable[..., None] | None = None) -> FastAPI:
+    login_email_sender = email_sender or send_login_email
     application = FastAPI(
         title="Health Intake",
         docs_url=None,
@@ -80,6 +87,8 @@ def create_app() -> FastAPI:
         *,
         mode: str,
         error: str | None = None,
+        message: str | None = None,
+        challenge_id: str | None = None,
         status_code: int = 200,
     ):
         return templates.TemplateResponse(
@@ -91,12 +100,21 @@ def create_app() -> FastAPI:
                 "consent_text": CONSENT_TEXT,
                 "mode": mode,
                 "error": error,
+                "message": message,
+                "challenge_id": challenge_id,
             },
             status_code=status_code,
         )
 
     def secure_cookie() -> bool:
         return get_settings().app_env.strip().casefold() not in {"development", "test"}
+
+    def request_ip(request: Request) -> str:
+        host = request.client.host if request.client is not None else "127.0.0.1"
+        try:
+            return canonical_ip(host)
+        except (TypeError, ValueError):
+            return "127.0.0.1"
 
     @application.get("/i/{public_slug}", name="invite")
     def invite(request: Request, public_slug: str):
@@ -132,7 +150,7 @@ def create_app() -> FastAPI:
             secure=secure_cookie(),
             httponly=True,
             samesite="lax",
-            path="/i",
+            path="/",
         )
         return response
 
@@ -151,6 +169,111 @@ def create_app() -> FastAPI:
         except (TypeError, ValueError):
             return RedirectResponse(url=f"/i/{workspace.public_slug}", status_code=303)
         return render_access(request, workspace, mode="email")
+
+    @application.post("/i/{public_slug}/access", name="request_access")
+    async def request_access(request: Request, public_slug: str):
+        workspace = access_workspace(public_slug)
+        token = request.cookies.get(CONSENT_COOKIE_NAME)
+        try:
+            if not token:
+                raise ValueError("missing consent")
+            consent = verify_workspace_consent(
+                get_settings().app_secret_key.get_secret_value(),
+                token,
+                workspace.id,
+            )
+        except (TypeError, ValueError):
+            return RedirectResponse(url=f"/i/{workspace.public_slug}", status_code=303)
+
+        form = await request.form()
+        email = form.get("email") if isinstance(form.get("email"), str) else ""
+        try:
+            with session_scope(workspace.id) as session:
+                challenge = issue_login_challenge(
+                    session,
+                    workspace_id=workspace.id,
+                    email=email,
+                    ip_address=request_ip(request),
+                    consent=consent,
+                    secret=get_settings().app_secret_key.get_secret_value(),
+                )
+            login_email_sender(
+                get_settings(),
+                recipient=email,
+                magic_token=challenge.magic_token,
+                otp=challenge.otp,
+            )
+        except (ChallengeUnavailable, EmailDeliveryError, TypeError, ValueError):
+            return render_access(
+                request,
+                workspace,
+                mode="email",
+                message="Если адрес принят, письмо отправлено. Проверьте входящие и папку «Спам».",
+                status_code=202,
+            )
+
+        return render_access(
+            request,
+            workspace,
+            mode="code",
+            message="Письмо отправлено. Введите шестизначный код из письма или откройте ссылку.",
+            challenge_id=str(challenge.challenge_id),
+            status_code=202,
+        )
+
+    @application.post("/auth/code", name="authenticate_code")
+    async def authenticate_code(request: Request):
+        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+            raise HTTPException(status_code=403, detail="invalid origin")
+        form = await request.form()
+        public_slug = form_text(form.get("public_slug"))
+        workspace = access_workspace(public_slug)
+        consent_token = request.cookies.get(CONSENT_COOKIE_NAME)
+        try:
+            if not consent_token:
+                raise ValueError("missing consent")
+            verify_workspace_consent(
+                get_settings().app_secret_key.get_secret_value(),
+                consent_token,
+                workspace.id,
+            )
+            challenge_id_value = form_text(form.get("challenge_id"))
+            challenge_id = UUID(challenge_id_value)
+            if str(challenge_id) != challenge_id_value:
+                raise ValueError("invalid challenge")
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="invalid code") from None
+
+        with session_scope(workspace.id) as session:
+            authenticated = authenticate_otp(
+                session,
+                workspace_id=workspace.id,
+                challenge_id=challenge_id,
+                code=form_text(form.get("code")),
+                secret=get_settings().app_secret_key.get_secret_value(),
+                request_id=uuid4().hex,
+            )
+        if authenticated is None:
+            return render_access(
+                request,
+                workspace,
+                mode="code",
+                message="Код не подошёл или уже истёк. Проверьте его и попробуйте ещё раз.",
+                challenge_id=challenge_id_value,
+                status_code=422,
+            )
+
+        response = RedirectResponse(url="/questionnaire", status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE_NAME,
+            authenticated.token,
+            max_age=30 * 24 * 60 * 60,
+            secure=secure_cookie(),
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+        return response
 
     def section_index(template, section_key: str | None) -> int:
         if section_key is None:

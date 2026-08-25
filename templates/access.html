@@ -36,7 +36,7 @@
                 <button class="primary-button" type="submit">Продолжить <span aria-hidden="true">→</span></button>
               </div>
             </form>
-          {% else %}
+          {% elif mode == "email" %}
             <h2 id="access-title">Войти в анкету</h2>
             <p>Введите email. Мы отправим короткую ссылку для входа и запасной код.</p>
             <form method="post" action="/i/{{ public_slug }}/access">
@@ -45,6 +45,19 @@
               <div class="form-actions">
                 <span></span>
                 <button class="primary-button" type="submit">Получить ссылку <span aria-hidden="true">→</span></button>
+              </div>
+            </form>
+          {% else %}
+            <h2 id="access-title">Проверьте почту</h2>
+            {% if message %}<p role="status">{{ message }}</p>{% endif %}
+            <form method="post" action="/auth/code">
+              <input type="hidden" name="public_slug" value="{{ public_slug }}">
+              <input type="hidden" name="challenge_id" value="{{ challenge_id }}">
+              <label class="field-label" for="code">Код из письма</label>
+              <input class="text-input" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6" required>
+              <div class="form-actions">
+                <span></span>
+                <button class="primary-button" type="submit">Войти по коду <span aria-hidden="true">→</span></button>
               </div>
             </form>
           {% endif %}

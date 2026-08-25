@@ -73,7 +73,7 @@ def authenticated_client(migrated_database):
 
 
 @pytest.fixture
-def public_client(migrated_database):
+def public_workspace(migrated_database):
     owner_url, _ = migrated_database
     workspace_id = uuid4()
     public_slug = f"public-{workspace_id.hex}"
@@ -92,9 +92,14 @@ def public_client(migrated_database):
 
     get_engine.cache_clear()
     try:
-        yield TestClient(create_app()), public_slug
+        yield public_slug
     finally:
         get_engine.cache_clear()
+
+
+@pytest.fixture
+def public_client(public_workspace):
+    yield TestClient(create_app()), public_workspace
 
 
 def test_health_is_available_without_openapi_surface() -> None:
@@ -127,6 +132,16 @@ def test_security_headers_are_present_on_html_and_json_responses() -> None:
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
+
+
+def test_magic_link_script_consumes_fragment_without_client_storage() -> None:
+    script = (Path(__file__).parents[1] / "static" / "auth.js").read_text(encoding="utf-8")
+
+    assert "window.location.hash" in script
+    assert "window.history.replaceState" in script
+    assert "form.submit()" in script
+    assert "localStorage" not in script
+    assert "sessionStorage" not in script
 
 
 def test_public_invite_requires_consent_and_opens_email_access(public_client) -> None:
@@ -162,6 +177,99 @@ def test_email_access_requires_consent(public_client) -> None:
 
     assert response.status_code == 303
     assert response.headers["location"] == f"/i/{public_slug}"
+
+
+def test_email_access_issues_challenge_without_leaking_secrets(public_workspace) -> None:
+    sent: list[dict[str, object]] = []
+
+    def sender(settings, **message: object) -> None:
+        sent.append(message)
+
+    client = TestClient(create_app(email_sender=sender))
+    client.post(f"/i/{public_workspace}/consent", data={"consent": "on"})
+
+    response = client.post(
+        f"/i/{public_workspace}/access",
+        data={"email": "client@example.com"},
+    )
+
+    assert response.status_code == 202
+    assert "Письмо отправлено" in response.text
+    assert 'name="challenge_id"' in response.text
+    assert sent[0]["recipient"] == "client@example.com"
+    assert "magic_token" in sent[0]
+    assert "otp" in sent[0]
+    assert sent[0]["magic_token"] not in response.text
+    assert sent[0]["otp"] not in response.text
+
+
+def test_email_code_creates_session_and_opens_questionnaire(public_workspace) -> None:
+    sent: list[dict[str, object]] = []
+
+    def sender(settings, **message: object) -> None:
+        sent.append(message)
+
+    client = TestClient(create_app(email_sender=sender))
+    client.post(f"/i/{public_workspace}/consent", data={"consent": "on"})
+    challenge_page = client.post(
+        f"/i/{public_workspace}/access",
+        data={"email": "client@example.com"},
+    )
+    challenge_id = next(
+        line.split('value="', 1)[1].split('"', 1)[0]
+        for line in challenge_page.text.splitlines()
+        if 'name="challenge_id"' in line
+    )
+
+    authenticated = client.post(
+        "/auth/code",
+        data={
+            "public_slug": public_workspace,
+            "challenge_id": challenge_id,
+            "code": sent[0]["otp"],
+        },
+        headers={"origin": "http://testserver"},
+        follow_redirects=False,
+    )
+
+    assert authenticated.status_code == 303
+    assert authenticated.headers["location"] == "/questionnaire"
+    assert "health_intake_session=" in authenticated.headers["set-cookie"]
+    questionnaire = client.get(authenticated.headers["location"])
+    assert questionnaire.status_code == 200
+    assert "Личные данные" in questionnaire.text
+
+
+def test_invalid_email_code_does_not_create_session(public_workspace) -> None:
+    sent: list[dict[str, object]] = []
+
+    def sender(settings, **message: object) -> None:
+        sent.append(message)
+
+    client = TestClient(create_app(email_sender=sender))
+    client.post(f"/i/{public_workspace}/consent", data={"consent": "on"})
+    challenge_page = client.post(
+        f"/i/{public_workspace}/access",
+        data={"email": "client@example.com"},
+    )
+    challenge_id = next(
+        line.split('value="', 1)[1].split('"', 1)[0]
+        for line in challenge_page.text.splitlines()
+        if 'name="challenge_id"' in line
+    )
+
+    response = client.post(
+        "/auth/code",
+        data={
+            "public_slug": public_workspace,
+            "challenge_id": challenge_id,
+            "code": "000000" if sent[0]["otp"] != "000000" else "999999",
+        },
+        headers={"origin": "http://testserver"},
+    )
+
+    assert response.status_code == 422
+    assert "health_intake_session=" not in response.headers.get("set-cookie", "")
 
 
 def test_questionnaire_route_renders_canonical_section_and_static_css() -> None:
