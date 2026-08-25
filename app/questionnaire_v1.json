@@ -1,0 +1,623 @@
+{
+  "version": "health-profile-v1",
+  "title": "Профиль здоровья",
+  "intro": "Добро пожаловать! Пожалуйста, отвечайте честно, всё конфиденциально. После каждого вопроса есть варианты для вашего удобства.",
+  "completion": "Спасибо за ваши ответы! Всё используется только для персональных рекомендаций. Я свяжусь с вами для обсуждения вашей стратегии!",
+  "sections": [
+    {
+      "key": "personal_data",
+      "title": "Персональные данные",
+      "questions": [
+        {
+          "source_number": 1,
+          "key": "full_name",
+          "type": "text",
+          "label": "Ваше имя, фамилия",
+          "helper": "Как к вам обращаться? (\"Анна\", \"Иван Петров\")",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 2,
+          "key": "birth_date_or_age",
+          "type": "date_or_age",
+          "label": "Дата рождения / возраст",
+          "helper": "\"38 лет\", \"10.02.1986\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 3,
+          "key": "height_cm",
+          "type": "number",
+          "label": "Рост (см)",
+          "helper": "\"167\"",
+          "required": true,
+          "unit": "см",
+          "comment_enabled": false
+        },
+        {
+          "source_number": 4,
+          "key": "weight_kg",
+          "type": "number",
+          "label": "Вес (кг)",
+          "helper": "\"72\"",
+          "required": true,
+          "unit": "кг",
+          "comment_enabled": false
+        },
+        {
+          "source_number": 5,
+          "key": "gender",
+          "type": "single_choice",
+          "label": "Пол",
+          "required": true,
+          "options": [
+            "Женский",
+            "Мужской",
+            "Другое",
+            "Предпочитаю не указывать"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 6,
+          "key": "location",
+          "type": "text",
+          "label": "Город/страна проживания",
+          "helper": "\"Москва\", \"Берлин, Германия\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 7,
+          "key": "contact",
+          "type": "text",
+          "label": "Контакт для связи (email/мессенджер)",
+          "helper": "\"anna@mail.ru\", \"@telegram\"",
+          "required": true,
+          "comment_enabled": false
+        }
+      ]
+    },
+    {
+      "key": "lifestyle",
+      "title": "Образ жизни",
+      "questions": [
+        {
+          "source_number": 8,
+          "key": "typical_day",
+          "type": "textarea",
+          "label": "Опишите свой обычный день: чем занимаетесь, какой у вас ритм (работа/учёба/дома/на природе)?",
+          "helper": "\"Работаю в офисе, вечером гуляю, на выходных спорт\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 9,
+          "key": "activity_level",
+          "type": "single_choice",
+          "label": "Какой у вас уровень активности?",
+          "required": true,
+          "options": [
+            "Сидячий",
+            "Умеренно активный",
+            "Активный",
+            "Очень высокий"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 10,
+          "key": "chronic_fatigue",
+          "type": "single_choice",
+          "label": "Есть ли у вас хроническая усталость, скачки энергии, чувство \"выжатости\" к вечеру?",
+          "helper": "Если есть, опишите: \"После обеда хочется спать\", \"С утра до обеда бодрость\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Иногда (1-2 раза в неделю)",
+            "Часто (почти каждый день)"
+          ],
+          "comment_enabled": true
+        }
+      ]
+    },
+    {
+      "key": "goals_motivation",
+      "title": "Цели и мотивация",
+      "questions": [
+        {
+          "source_number": 11,
+          "key": "goals",
+          "type": "multi_choice",
+          "label": "С какой целью вы обращаетесь к нутрициологу? (Можно выбрать несколько или описать свой вариант)",
+          "helper": "Опишите свой вариант: \"Хочу перестать тянуться к сладкому\", \"Снизить вес на 7 кг\"",
+          "required": true,
+          "options": [
+            "Улучшить энергию",
+            "Снизить вес",
+            "Набрать вес",
+            "Восстановить цикл/гормоны",
+            "ЖКТ",
+            "Привычки",
+            "Кожа/волосы",
+            "Микробиота",
+            "Беременность",
+            "Другое"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 12,
+          "key": "success_outcome",
+          "type": "textarea",
+          "label": "Как поймёте, что результат достигнут? Ваш “идеальный итог” через 1-3 месяца.",
+          "helper": "\"Буду легко вставать\", \"Уйдёт вздутие\", \"Вес -5 кг\", \"Появится энергия\"",
+          "required": true,
+          "comment_enabled": false
+        }
+      ]
+    },
+    {
+      "key": "health_history",
+      "title": "История здоровья",
+      "questions": [
+        {
+          "source_number": 13,
+          "key": "health_conditions",
+          "type": "single_choice",
+          "label": "Есть ли хронические или недавно перенесённые заболевания?",
+          "helper": "\"Гастрит с 2015 года\", \"Гипотиреоз, пью эутирокс\", \"Сахарный диабет\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (опишите какие)"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 14,
+          "key": "medications_supplements",
+          "type": "textarea",
+          "label": "Принимаете ли лекарства/витамины/БАДы? (название, дозировка, назначение)",
+          "helper": "\"Магний B6 — 2 табл., Омега-3 — 1000 мг\", \"Только витамин D\", \"Нет\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 15,
+          "key": "food_allergies",
+          "type": "single_choice",
+          "label": "Есть ли пищевая аллергия или непереносимость? На что и как проявляется?",
+          "helper": "\"На молоко — вздутие\", \"Глютен — усталость\", \"Цитрусовые — сыпь\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (уточните)"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 16,
+          "key": "operations_infections",
+          "type": "single_choice",
+          "label": "Были ли операции, травмы, инфекции или антибиотики за год?",
+          "helper": "\"Операция по удалению желчного\", \"Антибиотики 2 недели\", \"Перелом ноги\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (уточните)"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 17,
+          "key": "recent_tests",
+          "type": "textarea",
+          "label": "Когда сдавали анализы последний раз? Какие показатели есть на руках?",
+          "helper": "\"Анализы: витамин D, ферритин, ОАК — апрель 2024\", \"Нет свежих анализов\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 18,
+          "key": "family_history",
+          "type": "single_choice",
+          "label": "Есть ли генетические/семейные особенности (болезни у родственников)?",
+          "helper": "\"У мамы диабет 2 типа\", \"У бабушки инсульт\", \"Нет\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (уточните)"
+          ],
+          "comment_enabled": true
+        }
+      ]
+    },
+    {
+      "key": "nutrition",
+      "title": "Питание",
+      "questions": [
+        {
+          "source_number": 19,
+          "key": "meal_day",
+          "type": "textarea",
+          "label": "Опишите ваш обычный день питания: сколько приемов пищи, во сколько, есть ли перекусы",
+          "helper": "\"Завтрак 8:00, обед 13:00, ужин 19:00, перекусы орехи, иногда пропускаю завтрак\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 20,
+          "key": "cravings",
+          "type": "single_choice",
+          "label": "Бывает ли тяга к сладкому, мучному, солёному, кофе, газировке, алкоголю?",
+          "helper": "Если есть — опишите: \"Сладкое после обеда\", \"Кофе утром обязательно\", \"Алкоголь по выходным\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Иногда",
+            "Часто"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 21,
+          "key": "overeating",
+          "type": "single_choice",
+          "label": "Бывают ли эпизоды переедания, ночные перекусы, “срывы”?",
+          "helper": "Если бывают — когда и почему: \"Переедаю на работе после стресса, помогает чай и прогулка\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Иногда (1-2 раза в месяц)",
+            "Часто (еженедельно и больше)"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 22,
+          "key": "liked_foods",
+          "type": "textarea",
+          "label": "Какие продукты/блюда любите, без чего сложно представить рацион?",
+          "helper": "\"Творог, рыба, шоколад, овощи, макароны\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 23,
+          "key": "avoided_foods",
+          "type": "textarea",
+          "label": "Какие продукты не едите/не переносите категорически?",
+          "helper": "\"Не переношу грибы\", \"Не люблю красное мясо\", \"Аллергия на морепродукты\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 24,
+          "key": "diet_history",
+          "type": "single_choice",
+          "label": "Был ли опыт диет, ограничений, голодания? Как это повлияло на самочувствие?",
+          "helper": "\"Пробовала кето — была энергия, потом тяжесть\", \"Интервальное голодание — вес ушёл, появилось головокружение\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (опишите)"
+          ],
+          "comment_enabled": true
+        }
+      ]
+    },
+    {
+      "key": "gi_wellbeing",
+      "title": "ЖКТ, самочувствие",
+      "questions": [
+        {
+          "source_number": 25,
+          "key": "bowel_frequency",
+          "type": "single_choice",
+          "label": "Как часто бывает стул?",
+          "helper": "Можно добавить: \"Бывает нерегулярно\", \"Только с кофе\", \"Запоры\"",
+          "required": true,
+          "options": [
+            "Каждый день",
+            "Через день",
+            "Несколько раз в день",
+            "Реже чем раз в 2 дня",
+            "Другое"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 26,
+          "key": "gi_symptoms",
+          "type": "single_choice",
+          "label": "Есть ли вздутие, тяжесть, изжога, боль в животе, горечь во рту?",
+          "helper": "Если есть — после каких продуктов или когда? \"Вздутие после бобовых\", \"Изжога ночью\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Иногда",
+            "Часто"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 27,
+          "key": "skin_hair_nails",
+          "type": "single_choice",
+          "label": "Изменения в коже, волосах, ногтях?",
+          "helper": "\"Сухая кожа зимой\", \"Выпадают волосы\", \"Слоятся ногти\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (уточните)"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 28,
+          "key": "edema_thirst",
+          "type": "single_choice",
+          "label": "Бывают ли отёки, жажда или сухость во рту?",
+          "helper": "Если есть — когда и после чего \"Отёки после сладкого\", \"Сухость по утрам\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Иногда",
+            "Часто"
+          ],
+          "comment_enabled": true
+        }
+      ]
+    },
+    {
+      "key": "sleep_stress",
+      "title": "Сон и стресс",
+      "questions": [
+        {
+          "source_number": 29,
+          "key": "sleep_schedule",
+          "type": "textarea",
+          "label": "Во сколько обычно ложитесь спать и встаете? Сколько спите в среднем?",
+          "helper": "\"Ложусь в 23:00, встаю в 7:00, сплю 7-8 часов, часто просыпаюсь ночью\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 30,
+          "key": "sleep_quality",
+          "type": "single_choice",
+          "label": "Насколько легко засыпаете и просыпаетесь?",
+          "helper": "Можете добавить детали: \"Засыпаю долго, просыпаюсь рано\"",
+          "required": true,
+          "options": [
+            "Легко",
+            "Не очень",
+            "Часто есть проблемы"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 31,
+          "key": "stress_level",
+          "type": "scale",
+          "label": "Оцените уровень стресса по 10-балльной шкале (0 — нет стресса, 10 — максимум)",
+          "required": true,
+          "scale": {
+            "min": 0,
+            "max": 10
+          },
+          "comment_enabled": true
+        },
+        {
+          "source_number": 32,
+          "key": "mood_symptoms",
+          "type": "single_choice",
+          "label": "Есть ли тревожность, раздражительность, перемены настроения, апатия?",
+          "helper": "Если есть — как проявляется: \"Тревожусь по работе\", \"Апатия вечером\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Иногда",
+            "Часто"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 33,
+          "key": "psychological_practices",
+          "type": "single_choice",
+          "label": "Был ли опыт работы с психологом, коучем, медитациями?",
+          "helper": "Если был — что это дало, какие ощущения после (\"Научилась отпускать контроль\", \"Расслабление\")",
+          "required": true,
+          "options": [
+            "Нет",
+            "Был раньше",
+            "Сейчас работаю"
+          ],
+          "comment_enabled": true
+        }
+      ]
+    },
+    {
+      "key": "gender_health",
+      "title": "Женское/мужское здоровье",
+      "questions": [
+        {
+          "source_number": 34,
+          "key": "female_health",
+          "type": "textarea",
+          "label": "(Женщины) Опишите цикл: регулярность, длительность, ПМС, особенности, менопауза, операции, планирование беременности",
+          "helper": "\"Цикл 28-32 дня, задержки, болезненные месячные, планирую беременность\"",
+          "required": true,
+          "condition": {
+            "question_key": "gender",
+            "equals": "Женский"
+          },
+          "comment_enabled": false
+        },
+        {
+          "source_number": 35,
+          "key": "male_health",
+          "type": "single_choice",
+          "label": "(Мужчины) Изменения в либидо, энергии, потенции?",
+          "helper": "\"Меньше желания по вечерам\", \"Стал уставать после спорта\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (уточните)"
+          ],
+          "condition": {
+            "question_key": "gender",
+            "equals": "Мужской"
+          },
+          "comment_enabled": true
+        },
+        {
+          "source_number": 36,
+          "key": "sexual_health_history",
+          "type": "single_choice",
+          "label": "Были ли половые инфекции, хронические воспаления, проблемы с зачатием?",
+          "helper": "\"Бесплодие, цистит, лечение у уролога\"",
+          "required": true,
+          "options": [
+            "Нет",
+            "Да (уточните)"
+          ],
+          "comment_enabled": true
+        }
+      ]
+    },
+    {
+      "key": "activity_habits",
+      "title": "Физ. активность/привычки",
+      "questions": [
+        {
+          "source_number": 37,
+          "key": "physical_activity",
+          "type": "multi_choice",
+          "label": "Какая физ. активность ближе всего?",
+          "helper": "Опишите, сколько раз в неделю занимаетесь и что нравится/не нравится",
+          "required": true,
+          "options": [
+            "Нет спорта",
+            "Прогулки",
+            "Йога/танцы/пилатес",
+            "Спортзал",
+            "Бассейн",
+            "Другое"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 38,
+          "key": "water_drinks",
+          "type": "textarea",
+          "label": "Сколько воды пьёте в день? Какие напитки ещё пьёте?",
+          "helper": "\"Воды 1-1,5 литра, кофе 2 кружки, чай, морсы\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 39,
+          "key": "substances",
+          "type": "single_choice",
+          "label": "Отношение к алкоголю, курению, энергетикам, кофе",
+          "helper": "\"Кофе 3 раза в день, алкоголь по выходным, не курю\"",
+          "required": true,
+          "options": [
+            "Не употребляю",
+            "Иногда",
+            "Регулярно (уточните)"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 40,
+          "key": "support",
+          "type": "single_choice",
+          "label": "Есть ли поддержка в переменах образа жизни и питания?",
+          "helper": "\"Муж поддерживает\", \"Сложно на работе\"",
+          "required": true,
+          "options": [
+            "Да",
+            "Нет",
+            "Иногда",
+            "Не обсуждаю"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 41,
+          "key": "weight_history",
+          "type": "textarea",
+          "label": "Какой был максимальный/минимальный вес за жизнь? С чем связано?",
+          "helper": "\"Максимум 90 кг во время беременности, минимум 65 кг в студенчестве\"",
+          "required": true,
+          "comment_enabled": false
+        }
+      ]
+    },
+    {
+      "key": "readiness_final",
+      "title": "Готовность/финал",
+      "questions": [
+        {
+          "source_number": 42,
+          "key": "change_readiness",
+          "type": "scale",
+          "label": "Оцените готовность к переменам по шкале 1-10",
+          "helper": "1 — пока не готов(а), 10 — полностью готов(а)",
+          "required": true,
+          "scale": {
+            "min": 1,
+            "max": 10
+          },
+          "comment_enabled": true
+        },
+        {
+          "source_number": 43,
+          "key": "change_barriers",
+          "type": "textarea",
+          "label": "Что сложнее всего менять (привычки, еду, сон, образ мышления)?",
+          "helper": "\"Сложно отказаться от сладкого вечером\", \"Трудно ложиться спать раньше 23:00\"",
+          "required": true,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 44,
+          "key": "additional_context",
+          "type": "textarea",
+          "label": "Есть ли что-то ещё важное, о чём стоит знать?",
+          "helper": "\"В детстве было РПП\", \"Есть сложности в отношениях с телом\", \"Хочу научиться готовить быстро\"",
+          "required": false,
+          "comment_enabled": false
+        },
+        {
+          "source_number": 45,
+          "key": "food_diary_readiness",
+          "type": "single_choice",
+          "label": "Готов(а) вести фото-дневник питания или фиксировать рацион?",
+          "helper": "Фото-дневник — просто делайте фото еды, чтобы нам было проще анализировать!",
+          "required": true,
+          "options": [
+            "Да, с удовольствием",
+            "Готов(а) попробовать",
+            "Не готов(а)"
+          ],
+          "comment_enabled": true
+        },
+        {
+          "source_number": 46,
+          "key": "documents",
+          "type": "document_upload",
+          "label": "Приложите фото анализов, мед. заключений, дневника питания (если есть)",
+          "required": false,
+          "comment_enabled": false
+        }
+      ]
+    }
+  ]
+}
