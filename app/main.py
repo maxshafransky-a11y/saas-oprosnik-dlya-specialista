@@ -3,12 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.questionnaire import load_questionnaire
+from app.answers import is_question_visible
+from app.config import get_settings
+from app.questionnaire import Question, load_questionnaire
+from app.questionnaire_service import RevisionConflict, get_questionnaire_state, save_answers
+from app.web_auth import (
+    AuthenticatedRequest,
+    build_csrf_token,
+    require_authenticated_session,
+    valid_csrf_token,
+)
 
 ROOT = Path(__file__).parents[1]
 
@@ -45,26 +54,81 @@ def create_app() -> FastAPI:
     async def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
-    @application.get("/questionnaire", name="questionnaire")
-    async def questionnaire(request: Request, section: str | None = None):
+    def section_index(template, section_key: str | None) -> int:
+        if section_key is None:
+            return 0
+        index = next(
+            (index for index, item in enumerate(template.sections) if item.key == section_key),
+            None,
+        )
+        if index is None:
+            raise HTTPException(status_code=404, detail="section not found")
+        return index
+
+    def form_text(value: object) -> str:
+        return value if isinstance(value, str) else ""
+
+    def form_value(question: Question, form) -> object:
+        if question.type == "multi_choice":
+            return [item for item in form.getlist(question.key) if isinstance(item, str)]
+        raw = form_text(form.get(question.key))
+        if question.type == "scale":
+            try:
+                return int(raw)
+            except ValueError:
+                return raw
+        if question.type == "number":
+            try:
+                return int(raw) if raw.isdigit() else float(raw)
+            except ValueError:
+                return raw
+        return raw
+
+    def form_changes(section, state, form) -> dict[str, object]:
+        changes: dict[str, object] = {}
+        for question in section.questions:
+            if question.type == "document_upload" or not is_question_visible(
+                question, state.answers
+            ):
+                continue
+            value = form_value(question, form)
+            if (
+                not question.required
+                and question.type in {"text", "date_or_age", "textarea"}
+                and not value
+            ):
+                changes[question.key] = None
+                continue
+            payload: dict[str, object] = {"value": value}
+            if question.comment_enabled:
+                payload["comment"] = form_text(form.get(f"{question.key}__comment"))
+            changes[question.key] = payload
+        return changes
+
+    def render_questionnaire(
+        request: Request,
+        context: AuthenticatedRequest,
+        requested_section: str | None,
+    ):
         questionnaire_template = load_questionnaire()
         sections = questionnaire_template.sections
-        if section is None:
-            active_index = 0
-        else:
-            active_index = next(
-                (index for index, item in enumerate(sections) if item.key == section),
-                None,
-            )
-            if active_index is None:
-                raise HTTPException(status_code=404, detail="section not found")
+        state = get_questionnaire_state(
+            context.session,
+            workspace_id=context.principal.workspace_id,
+            client_id=context.principal.client_id,
+            template=questionnaire_template,
+        )
+        section = requested_section or state.current_section_key
+        active_index = section_index(questionnaire_template, section)
         active_section = sections[active_index]
-        state = SimpleNamespace(
-            answers={},
-            progress_percent=0,
-            completed_count=0,
-            question_count=46,
-            current_revision=0,
+        question_count = sum(len(item.questions) for item in sections)
+        completed_count = len(state.answers)
+        view_state = SimpleNamespace(
+            answers=state.answers,
+            progress_percent=round(completed_count / question_count * 100),
+            completed_count=completed_count,
+            question_count=question_count,
+            current_revision=state.current_revision,
         )
         return templates.TemplateResponse(
             request=request,
@@ -74,9 +138,96 @@ def create_app() -> FastAPI:
                 "active_section": active_section,
                 "active_section_index": active_index + 1,
                 "section_intro": questionnaire_template.intro,
-                "state": state,
+                "state": view_state,
+                "csrf_token": build_csrf_token(
+                    context.principal.session_id,
+                    get_settings().app_secret_key.get_secret_value(),
+                ),
             },
         )
+
+    @application.get("/questionnaire", name="questionnaire")
+    def questionnaire(
+        request: Request,
+        section: str | None = None,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        return render_questionnaire(request, context, section)
+
+    @application.get("/q/{section_key}", name="questionnaire_section")
+    def questionnaire_section(
+        request: Request,
+        section_key: str,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        return render_questionnaire(request, context, section_key)
+
+    async def save_questionnaire(
+        request: Request,
+        context: AuthenticatedRequest,
+        requested_section: str | None,
+    ):
+        form = await request.form()
+        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+            raise HTTPException(status_code=403, detail="invalid origin")
+        if not valid_csrf_token(
+            context.principal.session_id,
+            form_text(form.get("csrf_token")),
+            get_settings().app_secret_key.get_secret_value(),
+        ):
+            raise HTTPException(status_code=403, detail="invalid csrf token")
+
+        form_section = form_text(form.get("section_key")) or None
+        if requested_section is not None and form_section != requested_section:
+            raise HTTPException(status_code=400, detail="section mismatch")
+        template = load_questionnaire()
+        state = get_questionnaire_state(
+            context.session,
+            workspace_id=context.principal.workspace_id,
+            client_id=context.principal.client_id,
+            template=template,
+        )
+        active_key = requested_section or form_section or state.current_section_key
+        active_index = section_index(template, active_key)
+        try:
+            expected_revision = int(form_text(form.get("revision")))
+            save_answers(
+                context.session,
+                workspace_id=context.principal.workspace_id,
+                client_id=context.principal.client_id,
+                template=template,
+                section_key=template.sections[active_index].key,
+                changes=form_changes(template.sections[active_index], state, form),
+                expected_revision=expected_revision,
+            )
+        except RevisionConflict:
+            raise HTTPException(
+                status_code=409, detail="answers changed; reload and retry"
+            ) from None
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="invalid answers") from None
+
+        next_index = min(active_index + 1, len(template.sections) - 1)
+        return RedirectResponse(
+            url=f"/q/{template.sections[next_index].key}",
+            status_code=303,
+        )
+
+    @application.post("/questionnaire", name="save_questionnaire")
+    async def save_questionnaire_route(
+        request: Request,
+        section: str | None = None,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        return await save_questionnaire(request, context, section)
+
+    @application.post("/q/{section_key}", name="save_questionnaire_section")
+    async def save_questionnaire_section_route(
+        request: Request,
+        section_key: str,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        return await save_questionnaire(request, context, section_key)
 
     return application
 

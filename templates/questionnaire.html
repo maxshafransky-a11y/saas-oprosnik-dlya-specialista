@@ -62,17 +62,20 @@
             </div>
           </header>
 
-          <form class="questionnaire-form" method="post" action="#"
+          <form class="questionnaire-form" method="post" action=""
                 data-questionnaire-form data-section-key="{{ active_section.key }}"
                 data-revision="{{ state.current_revision }}" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="revision" value="{{ state.current_revision }}">
             <input type="hidden" name="section_key" value="{{ active_section.key }}">
 
             {% for question in active_section.questions %}
-              {% set answer = state.answers.get(question.key) or {} %}
-              {% set answer_value = answer.get("value", "") %}
-              {% set answer_comment = answer.get("comment", "") %}
-              <fieldset class="question-card" data-question-key="{{ question.key }}">
+              {% set visible = not question.condition or (state.answers.get(question.condition.question_key) or {}).get("value") == question.condition.equals %}
+              {% if visible %}
+                {% set answer = state.answers.get(question.key) or {} %}
+                {% set answer_value = answer.get("value", "") %}
+                {% set answer_comment = answer.get("comment", "") %}
+                <fieldset class="question-card" data-question-key="{{ question.key }}">
                 <legend>
                   <span class="question-number">{{ "%02d"|format(question.source_number) }}</span>
                   <span class="question-label">{{ question.label }}</span>
@@ -143,7 +146,8 @@
                               name="{{ question.key }}__comment" rows="2">{{ answer_comment }}</textarea>
                   </div>
                 {% endif %}
-              </fieldset>
+                </fieldset>
+              {% endif %}
             {% endfor %}
 
             <div class="form-actions">
