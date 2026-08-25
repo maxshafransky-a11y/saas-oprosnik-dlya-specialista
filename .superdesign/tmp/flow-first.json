@@ -1,0 +1,42 @@
+[
+  {
+    "title": "01 — Приглашение и согласие",
+    "prompt": "Design the first protected entry screen for the Russian health questionnaire. Use the exact intro: «Добро пожаловать! Пожалуйста, отвечайте честно, всё конфиденциально. После каждого вопроса есть варианты для вашего удобства.» Show a calm privacy explanation, ten sections, and pause-and-return reassurance. Add an unchecked required checkbox: «Я согласен(на) на обработку персональных данных и данных о состоянии здоровья для подготовки персональных рекомендаций» with a visible «Политика конфиденциальности» link; show the primary button «Начать анкету» disabled until consent. No invented logo, diagnosis, dashboard, or specialist profile. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "02 — Email для доступа",
+    "prompt": "Design the email-access step of the same protected questionnaire. Show the wordmark, concise confidentiality copy, one labelled email input, an inline validation state, and primary action «Получить код». Explain that no password is needed and the code protects the private link. Include desktop and mobile responsiveness. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "03 — Код подтверждения",
+    "prompt": "Design the six-digit one-time-code verification step. Show six large accessible digit inputs, masked destination email, resend countdown and a disabled resend state, link to change email, plus a calm inline wrong-or-expired-code error. Preserve the private consultation notebook tone, no generic auth dashboard. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "04 — Персональные данные",
+    "prompt": "Design questionnaire section 1 of 10, «Персональные данные». Render the exact source fields: «Ваше имя, фамилия»; «Дата рождения / возраст» with a birth-date-or-age choice; «Рост (см)»; «Вес (кг)»; «Пол» with Женский, Мужской, Другое, Предпочитаю не указывать; «Город/страна проживания»; «Контакт для связи (email/мессенджер)». Use airy semantic input cards, helper text, autosave and back/continue controls. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "05 — Образ жизни",
+    "prompt": "Design section 2 of 10, «Образ жизни». Render the exact source structure: a textarea for «Опишите свой обычный день: чем занимаетесь, какой у вас ритм (работа/учёба/дома/на природе)?»; radio cards for «Какой у вас уровень активности?» with Сидячий, Умеренно активный, Активный, Очень высокий; and radio cards for chronic fatigue with Нет, Иногда (1-2 раза в неделю), Часто (почти каждый день), revealing a clarification field. Keep source helpers visible. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "06 — Цели и мотивация",
+    "prompt": "Design section 3 of 10, «Цели и мотивация». Show multi-select cards for the exact goal options: Улучшить энергию, Снизить вес, Набрать вес, Восстановить цикл/гормоны, ЖКТ, Привычки, Кожа/волосы, Микробиота, Беременность, Другое. Selecting «Другое» reveals a labelled free-text field. Follow with the exact long-answer question «Как поймёте, что результат достигнут? Ваш “идеальный итог” через 1-3 месяца.» Use no gamification or medical diagnosis language. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "07 — История здоровья",
+    "prompt": "Design section 4 of 10, «История здоровья», using calm non-alarming cards. Include the exact source questions about chronic or recent illnesses, medicines/vitamins/supplements, food allergy or intolerance, operations/traumas/infections/antibiotics in the past year, recent analyses, and family/genetic health features. Use radio cards with an immediate clarification field for every «Да (уточните)» answer and a textarea for medicines and analyses. Preserve helpers and privacy reassurance. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "08 — ЖКТ и самочувствие",
+    "prompt": "Design section 6 of 10, «ЖКТ и самочувствие». Use the exact source questions: frequency of stool with options Каждый день, Через день, Несколько раз в день, Реже чем раз в 2 дня, Другое; symptoms of bloating/heaviness/heartburn/abdominal pain/bitterness; changes in skin/hair/nails; edema, thirst or dry mouth. Radio cards reveal calm optional detail fields when relevant. Include section progress, autosave and navigation. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "09 — Сон и стресс",
+    "prompt": "Design section 7 of 10, «Сон и стресс». Include the exact sleep schedule textarea, radio cards for ease of falling asleep/waking, an accessible tactile 0–10 stress scale with text-selected value, radio cards for anxiety/irritability/mood/apathy with clarification, and radio cards for experience with psychologist/coach/meditation. Keep the design gentle and non-clinical; never convey selected scale only by color. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  },
+  {
+    "title": "10 — Женское здоровье: условный вариант",
+    "prompt": "Design section 8 of 10 as the female conditional variant, «Женское здоровье». State discreetly that questions adapt to the earlier profile answer. Show only the exact female-specific source question about cycle, regularity, duration, PMS, menopause, operations and pregnancy planning, plus the shared question «Были ли половые инфекции, хронические воспаления, проблемы с зачатием?» with Нет / Да (уточните). Do not show the male-specific question in this selected female state. Use ONLY the fonts, colors, spacing, and component styles defined in the design system. Do not introduce any fonts, colors, or visual styles not in the design system."
+  }
+]

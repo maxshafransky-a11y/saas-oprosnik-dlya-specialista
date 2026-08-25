@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Профиль здоровья — UX Flow</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            paper: '#F6F2EA', surface: '#FFFCF6', ink: '#173A34', secondary: '#5D6863',
+            sage: '#DCE6D8', clay: '#C97554', peach: '#F3D8CB', line: '#DED8CD',
+            success: '#4D7A65', error: '#A34D42'
+          },
+          fontFamily: {
+            display: ['Cormorant Garamond', 'serif'], sans: ['Manrope', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="min-h-screen bg-paper font-sans text-ink">
+    <div class="mx-auto max-w-[1540px] px-8 py-10">
+      <header class="flex items-start justify-between border-b border-line pb-8">
+        <div>
+          <p class="font-display text-4xl font-semibold tracking-tight">Профиль здоровья</p>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-secondary">UX Flow · единая защищённая анкета для подготовки к персональной консультации. Без конструктора анкет, кабинета специалиста и медицинских обещаний.</p>
+        </div>
+        <div class="rounded-2xl border border-line bg-surface px-5 py-4 text-right text-xs leading-5 text-secondary">
+          <p class="font-semibold text-ink">Один шаблон · 46 вопросов</p>
+          <p>10 разделов · автосохранение · просмотр перед отправкой</p>
+        </div>
+      </header>
+
+      <section class="py-9" aria-labelledby="journey-title">
+        <div class="mb-5 flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-clay">Путь клиента</p>
+            <h1 id="journey-title" class="mt-1 font-display text-4xl font-semibold">Один спокойный маршрут от приглашения до стратегии</h1>
+          </div>
+          <p class="max-w-xs text-right text-xs leading-5 text-secondary">Любой незавершённый раздел сохраняется. Клиент возвращается по той же личной ссылке.</p>
+        </div>
+        <ol class="grid grid-cols-7 gap-3" aria-label="Этапы пользовательского пути">
+          <li class="rounded-2xl border border-clay bg-[#FFF7F2] p-4"><span class="text-xs font-bold text-clay">01</span><p class="mt-5 text-sm font-semibold">Приглашение</p><p class="mt-1 text-xs leading-5 text-secondary">Доверие и согласие</p></li>
+          <li class="rounded-2xl border border-line bg-surface p-4"><span class="text-xs font-bold text-secondary">02</span><p class="mt-5 text-sm font-semibold">Email</p><p class="mt-1 text-xs leading-5 text-secondary">Без пароля</p></li>
+          <li class="rounded-2xl border border-line bg-surface p-4"><span class="text-xs font-bold text-secondary">03</span><p class="mt-5 text-sm font-semibold">Код</p><p class="mt-1 text-xs leading-5 text-secondary">6 цифр, один раз</p></li>
+          <li class="rounded-2xl border border-line bg-surface p-4"><span class="text-xs font-bold text-secondary">04</span><p class="mt-5 text-sm font-semibold">Анкета</p><p class="mt-1 text-xs leading-5 text-secondary">10 тематических шагов</p></li>
+          <li class="rounded-2xl border border-line bg-surface p-4"><span class="text-xs font-bold text-secondary">05</span><p class="mt-5 text-sm font-semibold">Проверка</p><p class="mt-1 text-xs leading-5 text-secondary">Исправить перед отправкой</p></li>
+          <li class="rounded-2xl border border-line bg-surface p-4"><span class="text-xs font-bold text-secondary">06</span><p class="mt-5 text-sm font-semibold">Отправка</p><p class="mt-1 text-xs leading-5 text-secondary">Финальное подтверждение</p></li>
+          <li class="rounded-2xl border border-success bg-sage p-4"><span class="text-xs font-bold text-success">07</span><p class="mt-5 text-sm font-semibold">Готово</p><p class="mt-1 text-xs leading-5 text-secondary">Ожидание консультации</p></li>
+        </ol>
+      </section>
+
+      <section class="grid grid-cols-[340px_minmax(0,1fr)_330px] gap-7" aria-label="Экранная карта">
+        <aside class="space-y-5">
+          <div class="rounded-[26px] border border-line bg-surface p-6 shadow-[0_14px_34px_rgba(23,58,52,0.05)]">
+            <div class="flex items-center gap-2 text-xs font-semibold text-success"><iconify-icon icon="lucide:lock-keyhole"></iconify-icon> Личная ссылка</div>
+            <p class="mt-6 font-display text-3xl font-semibold">Добро пожаловать</p>
+            <p class="mt-3 text-sm leading-6 text-secondary">Пожалуйста, отвечайте честно, всё конфиденциально. После каждого вопроса есть варианты для вашего удобства.</p>
+            <div class="mt-6 rounded-xl border border-line bg-paper p-4">
+              <label class="flex gap-3 text-xs leading-5 text-ink"><span class="mt-0.5 flex h-5 w-5 shrink-0 rounded border-2 border-secondary"></span><span>Я согласен(на) на обработку персональных данных и данных о состоянии здоровья для подготовки персональных рекомендаций. <a id="privacy-policy-link" href="#privacy-policy" class="font-semibold text-clay underline">Политика конфиденциальности</a></span></label>
+            </div>
+            <button type="button" disabled class="mt-5 flex w-full items-center justify-center rounded-xl bg-[#C9C7C0] px-4 py-3 text-sm font-semibold text-surface">Начать анкету</button>
+            <p class="mt-3 text-center text-[11px] text-secondary">Кнопка активируется только после согласия</p>
+          </div>
+
+          <div class="rounded-[26px] border border-line bg-surface p-6">
+            <p class="text-xs font-bold uppercase tracking-[0.16em] text-clay">Доступ</p>
+            <div class="mt-5 space-y-4">
+              <div><label class="text-xs font-semibold">Email для доступа</label><div class="mt-2 rounded-xl border border-line bg-paper px-4 py-3 text-sm text-secondary">anna@example.com</div><p class="mt-2 text-[11px] text-secondary">Пароль не нужен — отправим одноразовый код.</p></div>
+              <button type="button" class="w-full rounded-xl bg-clay px-4 py-3 text-sm font-semibold text-surface">Получить код</button>
+              <div class="border-t border-line pt-4"><p class="text-xs font-semibold">Код из 6 цифр</p><div class="mt-3 flex gap-2"><span class="flex h-9 w-9 items-center justify-center rounded-lg border border-ink bg-sage text-sm font-semibold">4</span><span class="flex h-9 w-9 items-center justify-center rounded-lg border border-ink bg-sage text-sm font-semibold">8</span><span class="flex h-9 w-9 items-center justify-center rounded-lg border border-ink bg-sage text-sm font-semibold">2</span><span class="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-paper"></span><span class="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-paper"></span><span class="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-paper"></span></div><p class="mt-3 text-[11px] text-secondary">Повторная отправка через 00:42</p></div>
+            </div>
+          </div>
+
+          <div class="rounded-[26px] border border-[#E5C9C3] bg-[#FFF7F5] p-5">
+            <div class="flex items-center gap-2 text-sm font-semibold text-error"><iconify-icon icon="lucide:clock-3"></iconify-icon> Состояние доступа</div>
+            <p class="mt-2 text-xs leading-5 text-secondary">Если приглашение просрочено или отозвано, клиент видит спокойное объяснение и действие «Запросить новую ссылку», без технических ошибок и раскрытия чужих данных.</p>
+          </div>
+        </aside>
+
+        <main class="min-w-0 rounded-[30px] border border-line bg-surface p-7 shadow-[0_16px_40px_rgba(23,58,52,0.05)]">
+          <div class="flex items-start justify-between gap-6 border-b border-line pb-6">
+            <div><p class="text-xs font-bold uppercase tracking-[0.18em] text-clay">Основной сценарий</p><h2 class="mt-1 font-display text-4xl font-semibold">Анкета — 10 разделов, не 46 экранов</h2><p class="mt-2 max-w-2xl text-sm leading-6 text-secondary">Внутри каждого шага — 2–7 понятных карточек. На телефоне остаются липкий прогресс и нижняя кнопка; на desktop — спокойная боковая навигация.</p></div>
+            <div class="shrink-0 rounded-xl bg-sage px-4 py-3 text-right text-xs"><p class="font-semibold">Сохранено</p><p class="mt-1 text-secondary">Можно вернуться позже</p></div>
+          </div>
+
+          <div class="mt-6 grid grid-cols-2 gap-4">
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">01 · 7 вопросов</span><iconify-icon icon="lucide:user-round" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">Персональные данные</h3><p class="mt-2 text-xs leading-5 text-secondary">Имя, дата рождения или возраст, рост, вес, пол, город, контакт. Числовые поля с единицами; выбор пола управляет следующим разделом.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">02 · 3 вопроса</span><iconify-icon icon="lucide:calendar-days" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">Образ жизни</h3><p class="mt-2 text-xs leading-5 text-secondary">Описание обычного дня, уровень активности, хроническая усталость. При «Иногда» или «Часто» раскрывается уточнение.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">03 · 2 вопроса</span><iconify-icon icon="lucide:target" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">Цели и мотивация</h3><p class="mt-2 text-xs leading-5 text-secondary">Выбор нескольких целей: энергия, вес, ЖКТ, привычки и другие. «Другое» открывает поле; затем — идеальный результат через 1–3 месяца.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">04 · 6 вопросов</span><iconify-icon icon="lucide:heart-pulse" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">История здоровья</h3><p class="mt-2 text-xs leading-5 text-secondary">Заболевания, лекарства, аллергии, операции, анализы, семейные особенности. Для «Да» — бережное поле «уточнить» рядом с ответом.</p></article>
+            <article class="rounded-2xl border-2 border-clay bg-[#FFF7F2] p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">05 · 6 вопросов</span><span class="rounded-full bg-clay px-2 py-1 text-[10px] font-bold text-surface">эталонный экран</span></div><h3 class="mt-4 text-base font-semibold">Питание</h3><p class="mt-2 text-xs leading-5 text-secondary">Режим питания, тяга, переедания, любимые и исключаемые продукты, опыт диет. Radio-карточки и честные свободные ответы — без оценки рациона.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">06 · 4 вопроса</span><iconify-icon icon="lucide:scan-heart" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">ЖКТ и самочувствие</h3><p class="mt-2 text-xs leading-5 text-secondary">Стул, вздутие и изжога, кожа/волосы/ногти, отёки и жажда. Симптомы не диагностируются — клиент только описывает наблюдения.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">07 · 5 вопросов</span><iconify-icon icon="lucide:moon-star" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">Сон и стресс</h3><p class="mt-2 text-xs leading-5 text-secondary">Режим сна, лёгкость засыпания, шкала стресса 0–10, тревожность и опыт поддержки. Значение шкалы всегда продублировано текстом.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">08 · 3 вопроса</span><iconify-icon icon="lucide:shield-plus" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">Женское / мужское здоровье</h3><p class="mt-2 text-xs leading-5 text-secondary">Показывается только релевантный вопрос о цикле либо либидо; общий вопрос об инфекциях и воспалениях доступен всем. Ничего не принуждается.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">09 · 5 вопросов</span><iconify-icon icon="lucide:footprints" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">Активность и привычки</h3><p class="mt-2 text-xs leading-5 text-secondary">Активность, вода и напитки, алкоголь/курение/кофе, поддержка близких, диапазон веса. Checkbox для видов спорта, пояснения — по желанию.</p></article>
+            <article class="rounded-2xl border border-line bg-paper p-5"><div class="flex items-center justify-between"><span class="text-xs font-bold text-clay">10 · 5 вопросов</span><iconify-icon icon="lucide:flag" class="text-secondary"></iconify-icon></div><h3 class="mt-4 text-base font-semibold">Готовность и финал</h3><p class="mt-2 text-xs leading-5 text-secondary">Готовность 1–10, сложные изменения, важные детали, фото-дневник и опциональная загрузка анализов или заключений.</p></article>
+          </div>
+
+          <div class="mt-6 grid grid-cols-[1fr_auto] items-center gap-5 rounded-2xl border border-line bg-paper p-5">
+            <div><p class="text-sm font-semibold">Единый паттерн ответа</p><p class="mt-1 text-xs leading-5 text-secondary">Поле → понятная подсказка из исходной анкеты → уточнение только после релевантного ответа → тихое автосохранение.</p></div>
+            <div class="flex items-center gap-3"><button type="button" class="rounded-xl px-4 py-3 text-sm font-semibold text-secondary">Назад</button><button type="button" class="rounded-xl bg-clay px-5 py-3 text-sm font-semibold text-surface">Продолжить</button></div>
+          </div>
+        </main>
+
+        <aside class="space-y-5">
+          <div class="rounded-[26px] border border-line bg-surface p-6">
+            <p class="text-xs font-bold uppercase tracking-[0.16em] text-clay">Перед отправкой</p>
+            <h2 class="mt-2 font-display text-3xl font-semibold">Проверка ответов</h2>
+            <p class="mt-2 text-xs leading-5 text-secondary">Не показываем длинную стену текста: только компактные блоки с ответами и ссылкой «Изменить».</p>
+            <div class="mt-5 space-y-3">
+              <div class="rounded-xl border border-line bg-paper p-3"><div class="flex justify-between text-xs font-semibold"><span>Питание</span><span class="text-clay">Изменить</span></div><p class="mt-2 text-[11px] leading-5 text-secondary">3 приёма пищи · тяга иногда · без ночных перекусов</p></div>
+              <div class="rounded-xl border border-line bg-paper p-3"><div class="flex justify-between text-xs font-semibold"><span>Сон и стресс</span><span class="text-clay">Изменить</span></div><p class="mt-2 text-[11px] leading-5 text-secondary">7–8 часов · стресс 6 из 10</p></div>
+              <div class="rounded-xl border border-line bg-paper p-3"><div class="flex justify-between text-xs font-semibold"><span>Вложения</span><span class="text-clay">Изменить</span></div><p class="mt-2 text-[11px] leading-5 text-secondary">Не добавлены</p></div>
+            </div>
+            <button type="button" class="mt-5 w-full rounded-xl bg-clay px-4 py-3 text-sm font-semibold text-surface">Отправить анкету</button>
+          </div>
+
+          <div class="rounded-[26px] border border-success bg-sage p-6">
+            <div class="flex items-center gap-2 text-sm font-semibold"><iconify-icon icon="lucide:check-circle-2" class="text-lg text-success"></iconify-icon> Анкета отправлена</div>
+            <p class="mt-4 font-display text-2xl font-semibold">Спасибо за ваши ответы!</p>
+            <p class="mt-2 text-xs leading-5 text-secondary">Всё используется только для персональных рекомендаций. Специалист свяжется с вами для обсуждения стратегии.</p>
+            <div class="mt-5 border-t border-success/30 pt-4 text-[11px] leading-5 text-secondary">После отправки ответы становятся доступными только для чтения. Никакого диагноза или автоматической рекомендации на этом экране нет.</div>
+          </div>
+
+          <div class="rounded-[26px] border border-line bg-surface p-6">
+            <p class="text-xs font-bold uppercase tracking-[0.16em] text-clay">Системные состояния</p>
+            <ul class="mt-4 space-y-3 text-xs leading-5 text-secondary">
+              <li class="flex gap-2"><iconify-icon icon="lucide:cloud-check" class="mt-0.5 text-success"></iconify-icon><span><strong class="text-ink">Сохранено</strong> — видимый, но ненавязчивый статус.</span></li>
+              <li class="flex gap-2"><iconify-icon icon="lucide:cloud-off" class="mt-0.5 text-error"></iconify-icon><span><strong class="text-ink">Не удалось сохранить</strong> — кнопка «Повторить», ответы не стираются.</span></li>
+              <li class="flex gap-2"><iconify-icon icon="lucide:paperclip" class="mt-0.5 text-clay"></iconify-icon><span><strong class="text-ink">Файлы</strong> — опционально, с прогрессом загрузки и удалением до отправки.</span></li>
+              <li class="flex gap-2"><iconify-icon icon="lucide:asterisk" class="mt-0.5 text-clay"></iconify-icon><span><strong class="text-ink">Валидация</strong> — только у видимых обязательных полей, рядом с ошибкой.</span></li>
+            </ul>
+          </div>
+        </aside>
+      </section>
+
+      <section id="privacy-policy" class="mt-9 rounded-[28px] border border-line bg-surface p-7">
+        <div class="grid grid-cols-[1fr_1.3fr] gap-10">
+          <div><p class="text-xs font-bold uppercase tracking-[0.18em] text-clay">Граница продукта</p><h2 class="mt-2 font-display text-3xl font-semibold">Что входит в этот MVP</h2></div>
+          <div class="grid grid-cols-2 gap-x-8 gap-y-4 text-xs leading-5 text-secondary"><p><strong class="text-ink">Входит:</strong> личная ссылка, email-код, анкета, автосохранение, проверка, отправка, файлы, состояния ошибок.</p><p><strong class="text-ink">Не входит:</strong> редактор анкет, кабинет специалиста, CRM, ИИ-анализ, автоматический диагноз, публичная форма.</p><p><strong class="text-ink">Согласие:</strong> обязательная отдельная галочка до начала анкеты; финальный юридический текст и ссылка на политику утверждаются до запуска.</p><p><strong class="text-ink">Будущая интеграция:</strong> после отправки данные передаются в основную платформу через отдельный безопасный контракт, а не через интерфейс клиента.</p></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>
