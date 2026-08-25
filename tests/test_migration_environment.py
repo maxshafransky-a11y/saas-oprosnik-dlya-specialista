@@ -36,6 +36,7 @@ def test_alembic_ini_points_to_migrations_without_url_or_credentials() -> None:
     config = Config(str(ALEMBIC_INI))
 
     assert Path(config.get_main_option("script_location")).resolve() == ROOT / "migrations"
+    assert config.get_main_option("path_separator") == "os"
     assert config.get_main_option("sqlalchemy.url") in (None, "")
 
     source = ALEMBIC_INI.read_text(encoding="utf-8")
