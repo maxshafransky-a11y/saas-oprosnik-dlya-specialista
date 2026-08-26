@@ -118,6 +118,15 @@ def test_browser_autosaves_radio_comment_and_survives_reload(migrated_database) 
                 [{"name": "health_intake_session", "value": token, "url": base_url}]
             )
             page = context.new_page()
+            answer_requests = []
+            page.on(
+                "request",
+                lambda request: (
+                    answer_requests.append(request.post_data)
+                    if "/answers/cravings" in request.url
+                    else None
+                ),
+            )
             page.goto(f"{base_url}/q/nutrition")
 
             assert page.evaluate(

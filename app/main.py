@@ -238,6 +238,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="questionnaire is not editable") from None
         except (TypeError, ValueError):
             raise HTTPException(status_code=422, detail="invalid answer payload") from None
+        context.session.commit()
         return JSONResponse(
             {
                 "question_key": question_key,
@@ -564,6 +565,7 @@ def create_app(
             )
         except (InvalidUpload, InvalidRequestId, TypeError, ValueError):
             raise HTTPException(status_code=422, detail="invalid upload metadata") from None
+        context.session.commit()
         return JSONResponse(document_payload(result), status_code=201)
 
     @application.post("/documents/{document_id}/complete", name="complete_document_upload")
@@ -588,6 +590,7 @@ def create_app(
             raise HTTPException(
                 status_code=409, detail="document is not ready to complete"
             ) from None
+        context.session.commit()
         return JSONResponse(document_payload(result))
 
     @application.get("/documents/{document_id}/status", name="document_status")
@@ -626,6 +629,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="document not found") from None
         except (InvalidDocumentState, InvalidRequestId, UploadIncomplete):
             raise HTTPException(status_code=409, detail="document is not ready") from None
+        context.session.commit()
         return JSONResponse(document_payload(result))
 
     @application.delete("/documents/{document_id}", name="delete_document")
@@ -648,6 +652,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="document not found") from None
         except InvalidRequestId:
             raise HTTPException(status_code=422, detail="invalid request id") from None
+        context.session.commit()
         return JSONResponse(document_payload(result))
 
     def section_index(template, section_key: str | None) -> int:
@@ -714,6 +719,7 @@ def create_app(
             client_id=context.principal.client_id,
             template=questionnaire_template,
         )
+        context.session.commit()
         section = requested_section or state.current_section_key
         active_index = section_index(questionnaire_template, section)
         active_section = sections[active_index]
@@ -803,6 +809,7 @@ def create_app(
         except (TypeError, ValueError):
             raise HTTPException(status_code=422, detail="invalid answers") from None
 
+        context.session.commit()
         if active_index == len(template.sections) - 1:
             return RedirectResponse(url="/review", status_code=303)
         next_index = active_index + 1
@@ -839,6 +846,7 @@ def create_app(
             client_id=context.principal.client_id,
             template=template,
         )
+        context.session.commit()
         if state.status is QuestionnaireResponseStatus.SUBMITTED:
             return RedirectResponse(url="/complete", status_code=303)
         return render_lifecycle(request, context, mode="review", state=state)
@@ -885,6 +893,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="questionnaire is not editable") from None
         except (InvalidIdentifier, TypeError, ValueError):
             raise HTTPException(status_code=422, detail="invalid submission") from None
+        context.session.commit()
         return RedirectResponse(url="/complete", status_code=303)
 
     @application.get("/complete", name="complete")
@@ -899,6 +908,7 @@ def create_app(
             client_id=context.principal.client_id,
             template=template,
         )
+        context.session.commit()
         if state.status is not QuestionnaireResponseStatus.SUBMITTED:
             return RedirectResponse(url="/review", status_code=303)
         return render_lifecycle(request, context, mode="complete", state=state)
@@ -922,6 +932,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="questionnaire is not submitted") from None
         except (InvalidIdentifier, ValueError):
             raise HTTPException(status_code=422, detail="invalid edit request") from None
+        context.session.commit()
         return RedirectResponse(url="/questionnaire", status_code=303)
 
     @application.post("/auth/logout", name="logout")
@@ -933,6 +944,7 @@ def create_app(
         require_state_change(request, context, form_text(form.get("csrf_token")))
         token = request.cookies.get(SESSION_COOKIE_NAME, "")
         revoke_session(context.session, token=token, request_id=request_id(request))
+        context.session.commit()
         response = Response(status_code=204)
         response.delete_cookie(SESSION_COOKIE_NAME, path="/")
         return response
