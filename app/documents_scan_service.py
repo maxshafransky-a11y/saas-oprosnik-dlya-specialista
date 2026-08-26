@@ -14,11 +14,14 @@ from app.documents_service import ALLOWED_DECLARED_MIMES
 from app.models import AuditEvent, Document, DocumentStatus
 
 MAX_SCAN_BATCH = 100
+MAX_SCAN_ATTEMPTS = 5
 MIN_LEASE_SECONDS = 1
 MAX_LEASE_SECONDS = 3600
+MAX_RETRY_DELAY_SECONDS = 60
 _IDENTIFIER_RE = re.compile(r"[0-9a-f]{32}")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _REJECTION_REASONS = frozenset({"invalid_object", "malware", "mime_mismatch", "scan_error"})
+_RETRY_REASONS = frozenset({"scanner_unavailable", "storage_unavailable", "scan_error"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +95,11 @@ def _validate_lease(limit: int, lease_seconds: int) -> None:
 def _validate_attempt(attempt: int) -> None:
     if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
         raise InvalidScanRequest("scan attempt is invalid")
+
+
+def _validate_retry_reason(reason: str) -> None:
+    if reason not in _RETRY_REASONS:
+        raise InvalidScanRequest("scan retry reason is invalid")
 
 
 def _validate_text(value: str | None, field: str) -> str | None:
@@ -244,6 +252,77 @@ def finish_scan(
             "detected_mime": normalized.detected_mime,
             "rejection_reason": normalized.rejection_reason,
         }
+    session.add(
+        AuditEvent(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            client_id=client_id,
+            actor_type="worker",
+            event_type=event_type,
+            target_type="document",
+            target_id=document.id,
+            occurred_at=occurred_at,
+            request_id=request_id,
+            metadata_jsonb=metadata,
+        )
+    )
+    session.flush()
+    return _result(document)
+
+
+def retry_scan(
+    session: Session,
+    workspace_id: UUID,
+    client_id: UUID,
+    document_id: UUID,
+    *,
+    attempt: int,
+    reason: str,
+    request_id: str,
+    now: datetime | None = None,
+) -> ScanResult:
+    _validate_request_id(request_id)
+    _validate_attempt(attempt)
+    _validate_retry_reason(reason)
+    occurred_at = _utc(now)
+    document = session.execute(
+        select(Document)
+        .where(
+            Document.id == document_id,
+            Document.workspace_id == workspace_id,
+            Document.client_id == client_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if document is None:
+        raise ScanDocumentNotFound("document not found")
+    if document.status in {DocumentStatus.READY, DocumentStatus.REJECTED}:
+        return _result(document)
+    if (
+        document.status is not DocumentStatus.SCANNING
+        or document.scan_attempts != attempt
+        or document.scan_lease_until is None
+        or document.scan_lease_until <= occurred_at
+    ):
+        raise InvalidScanState("document is not leased for scanning")
+    document.detected_mime = None
+    document.sha256 = None
+    document.scan_lease_until = None
+    if attempt >= MAX_SCAN_ATTEMPTS:
+        document.status = DocumentStatus.REJECTED
+        document.next_scan_at = None
+        document.ready_at = None
+        document.rejection_reason = "scan_error"
+        event_type = "document_rejected"
+        metadata = {"rejection_reason": "scan_error", "attempt": attempt}
+    else:
+        delay = min(2 ** (attempt - 1), MAX_RETRY_DELAY_SECONDS)
+        document.status = DocumentStatus.QUARANTINED
+        document.next_scan_at = occurred_at + timedelta(seconds=delay)
+        document.ready_at = None
+        document.rejection_reason = None
+        event_type = "document_scan_retry"
+        metadata = {"attempt": attempt, "next_scan_at": document.next_scan_at.isoformat()}
     session.add(
         AuditEvent(
             id=uuid4(),

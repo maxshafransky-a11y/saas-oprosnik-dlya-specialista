@@ -326,6 +326,55 @@ def test_stale_attempt_cannot_finalize_after_reclaim(scan_context) -> None:
         engine.dispose()
 
 
+def test_retry_uses_backoff_and_rejects_after_attempt_limit(scan_context) -> None:
+    owner_url, engine, workspace_id, client_id = scan_context
+    cursor = datetime(2026, 1, 2, tzinfo=UTC)
+    request_number = 10
+    try:
+        with _runtime_session(engine, workspace_id) as session:
+            document_id = _insert_document(session, workspace_id, client_id)
+            session.commit()
+        for attempt in range(1, documents_scan_service.MAX_SCAN_ATTEMPTS + 1):
+            with _runtime_session(engine, workspace_id) as session:
+                jobs = documents_scan_service.claim_scan_jobs(
+                    session, workspace_id, now=cursor, lease_seconds=60
+                )
+                session.commit()
+            assert jobs[0].attempt == attempt
+            with _runtime_session(engine, workspace_id) as session:
+                result = documents_scan_service.retry_scan(
+                    session,
+                    workspace_id,
+                    client_id,
+                    document_id,
+                    attempt=attempt,
+                    reason="scanner_unavailable",
+                    request_id=f"{request_number:032x}",
+                    now=cursor,
+                )
+                session.commit()
+            request_number += 1
+            if attempt < documents_scan_service.MAX_SCAN_ATTEMPTS:
+                cursor += timedelta(seconds=2 ** (attempt - 1))
+    finally:
+        engine.dispose()
+
+    assert result.status is DocumentStatus.REJECTED
+    assert result.rejection_reason == "scan_error"
+    audits = _owner_rows(
+        owner_url,
+        workspace_id,
+        "SELECT event_type FROM audit_events ORDER BY created_at",
+    )
+    assert [row["event_type"] for row in audits] == [
+        "document_scan_retry",
+        "document_scan_retry",
+        "document_scan_retry",
+        "document_scan_retry",
+        "document_rejected",
+    ]
+
+
 def test_claim_is_tenant_scoped(scan_context, migrated_database) -> None:
     _, engine, workspace_id, client_id = scan_context
     other_owner_url, _ = migrated_database
