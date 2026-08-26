@@ -71,7 +71,8 @@ ROOT = Path(__file__).parents[1]
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'self'; base-uri 'self'; form-action 'self'; "
-        "frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'"
+        "frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; "
+        "connect-src 'self' https:"
     ),
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Referrer-Policy": "no-referrer",

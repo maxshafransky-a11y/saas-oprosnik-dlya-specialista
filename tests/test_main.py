@@ -128,6 +128,7 @@ def test_security_headers_are_present_on_html_and_json_responses() -> None:
     response = client.get("/health")
 
     assert response.headers["content-security-policy"].startswith("default-src 'self'")
+    assert "connect-src 'self' https:" in response.headers["content-security-policy"]
     assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
