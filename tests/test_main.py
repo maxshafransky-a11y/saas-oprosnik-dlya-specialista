@@ -375,6 +375,14 @@ def test_authenticated_questionnaire_post_saves_and_redirects(authenticated_clie
     assert 'name="revision" value="1"' in resumed.text
 
 
+def test_questionnaire_template_labels_final_action_as_review() -> None:
+    template = (Path(__file__).parents[1] / "templates" / "questionnaire.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Проверить ответы" in template
+
+
 def test_questionnaire_post_rejects_invalid_csrf(authenticated_client) -> None:
     client, token = authenticated_client
 

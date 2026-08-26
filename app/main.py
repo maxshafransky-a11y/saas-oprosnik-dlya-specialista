@@ -803,7 +803,9 @@ def create_app(
         except (TypeError, ValueError):
             raise HTTPException(status_code=422, detail="invalid answers") from None
 
-        next_index = min(active_index + 1, len(template.sections) - 1)
+        if active_index == len(template.sections) - 1:
+            return RedirectResponse(url="/review", status_code=303)
+        next_index = active_index + 1
         return RedirectResponse(
             url=f"/q/{template.sections[next_index].key}",
             status_code=303,

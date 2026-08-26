@@ -159,7 +159,7 @@
 
             <div class="form-actions">
               <p class="autosave-note"><span class="save-dot" aria-hidden="true"></span>Ответы сохраняются автоматически</p>
-              <button class="primary-button" type="submit">Сохранить и продолжить <span aria-hidden="true">→</span></button>
+              <button class="primary-button" type="submit">{% if active_section_index == template.sections|length %}Проверить ответы{% else %}Сохранить и продолжить{% endif %} <span aria-hidden="true">→</span></button>
             </div>
           </form>
         </div>
