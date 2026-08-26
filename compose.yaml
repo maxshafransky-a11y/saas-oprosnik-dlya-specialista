@@ -17,5 +17,14 @@ services:
       retries: 10
       start_period: 5s
 
+  clamav:
+    image: clamav/clamav:1.4.3
+    ports:
+      - "127.0.0.1:3310:3310"
+    volumes:
+      - health_intake_clamav_db:/var/lib/clamav
+    restart: unless-stopped
+
 volumes:
   health_intake_pgdata:
+  health_intake_clamav_db:

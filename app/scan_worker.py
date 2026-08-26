@@ -212,7 +212,11 @@ class ClamAVClient:
     @staticmethod
     def _read_response(connection) -> str:
         response = bytearray()
-        while len(response) < CLAMAV_RESPONSE_SIZE and b"\n" not in response:
+        while (
+            len(response) < CLAMAV_RESPONSE_SIZE
+            and b"\n" not in response
+            and b"\0" not in response
+        ):
             try:
                 chunk = connection.recv(CLAMAV_RESPONSE_SIZE - len(response))
             except (OSError, TimeoutError) as error:
@@ -220,10 +224,15 @@ class ClamAVClient:
             if not chunk:
                 break
             response.extend(chunk)
-        if b"\n" not in response:
+        terminators = [
+            position
+            for position in (response.find(b"\n"), response.find(b"\0"))
+            if position >= 0
+        ]
+        if not terminators:
             raise ScannerUnavailable("scanner_unavailable")
         try:
-            return bytes(response).split(b"\n", 1)[0].decode("ascii").strip()
+            return bytes(response)[: min(terminators)].decode("ascii").strip()
         except UnicodeDecodeError as error:
             raise ScannerUnavailable("scanner_unavailable") from error
 
