@@ -124,7 +124,7 @@
     const card = field.closest("[data-question-key]");
     field.addEventListener("input", () => debounceCard(card));
     field.addEventListener("change", () => queueCard(card));
-    field.addEventListener("blur", () => queueCard(card));
+    field.addEventListener("blur", () => window.setTimeout(() => queueCard(card), 0));
   });
 
   form.addEventListener("submit", async (event) => {
