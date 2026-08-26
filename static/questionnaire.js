@@ -8,6 +8,9 @@
   const dirty = new Set();
   const queued = new Set();
   const timers = new Map();
+  const documentPollers = new Map();
+  const DOCUMENT_POLL_INTERVAL_MS = 2000;
+  const DOCUMENT_POLL_TIMEOUT_MS = 60000;
   let pumpPromise = null;
 
   function setSaveStatus(message, isError = false) {
@@ -149,11 +152,13 @@
     const button = document.createElement("button");
     button.className = "primary-button";
     button.type = "button";
+    button.dataset.documentAction = "delete";
     button.textContent = "Удалить";
     button.addEventListener("click", async () => {
       button.disabled = true;
       try {
         await apiRequest(`/documents/${encodeURIComponent(documentId)}`, { method: "DELETE" });
+        line.dataset.documentStatus = "deleted";
         line.textContent = `${line.dataset.filename}: Файл удалён`;
       } catch (_) {
         button.disabled = false;
@@ -161,13 +166,14 @@
         line.append(" ", button);
       }
     });
-    line.append(" ", button);
+    return button;
   }
 
   function addDownloadButton(line, documentId) {
     const button = document.createElement("button");
     button.className = "primary-button";
     button.type = "button";
+    button.dataset.documentAction = "download";
     button.textContent = "Скачать";
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -181,7 +187,7 @@
         line.append(" Не удалось получить ссылку");
       }
     });
-    line.append(" ", button);
+    return button;
   }
 
   function documentStatusLabel(status) {
@@ -194,12 +200,54 @@
     }[status] || "статус неизвестен";
   }
 
+  function renderDocumentLine(line, status) {
+    const existingButtons = new Map(
+      [...line.querySelectorAll("[data-document-action]")].map((button) => [
+        button.dataset.documentAction,
+        button,
+      ]),
+    );
+    line.dataset.documentStatus = status;
+    line.replaceChildren(document.createTextNode(`${line.dataset.filename}: ${documentStatusLabel(status)}`));
+    if (status === "ready") {
+      line.append(" ", existingButtons.get("download") || addDownloadButton(line, line.dataset.documentId));
+    }
+    if (status !== "deleted") {
+      line.append(" ", existingButtons.get("delete") || addDeleteButton(line, line.dataset.documentId));
+    }
+  }
+
+  function pollDocument(line, documentId) {
+    if (documentPollers.has(documentId)) return;
+    const startedAt = Date.now();
+    const poll = async () => {
+      try {
+        const result = await apiRequest(`/documents/${encodeURIComponent(documentId)}/status`);
+        renderDocumentLine(line, result.status);
+        if (!["quarantined", "scanning"].includes(result.status)) {
+          documentPollers.delete(documentId);
+          return;
+        }
+      } catch (_) {
+        if (Date.now() - startedAt >= DOCUMENT_POLL_TIMEOUT_MS) {
+          documentPollers.delete(documentId);
+          return;
+        }
+      }
+      if (Date.now() - startedAt >= DOCUMENT_POLL_TIMEOUT_MS) {
+        documentPollers.delete(documentId);
+        return;
+      }
+      documentPollers.set(documentId, window.setTimeout(poll, DOCUMENT_POLL_INTERVAL_MS));
+    };
+    documentPollers.set(documentId, window.setTimeout(poll, DOCUMENT_POLL_INTERVAL_MS));
+  }
+
   form.querySelectorAll("[data-existing-document]").forEach((line) => {
     const documentId = line.dataset.documentId;
     const status = line.dataset.documentStatus;
-    line.textContent = `${line.dataset.filename}: ${documentStatusLabel(status)}`;
-    if (status === "ready") addDownloadButton(line, documentId);
-    addDeleteButton(line, documentId);
+    renderDocumentLine(line, status);
+    if (["quarantined", "scanning"].includes(status)) pollDocument(line, documentId);
   });
 
   async function uploadFile(file, list, status) {
@@ -223,8 +271,11 @@
       const completed = await apiRequest(`/documents/${encodeURIComponent(intent.document_id)}/complete`, {
         method: "POST",
       });
-      line.textContent = `${file.name}: ${completed.status === "quarantined" ? "проверяем файл…" : completed.status}`;
-      addDeleteButton(line, intent.document_id);
+      line.dataset.documentId = intent.document_id;
+      renderDocumentLine(line, completed.status);
+      if (["quarantined", "scanning"].includes(completed.status)) {
+        pollDocument(line, intent.document_id);
+      }
       status.textContent = "Файл добавлен и отправлен на проверку";
     } catch (_) {
       line.textContent = `${file.name}: не удалось загрузить, попробуйте ещё раз`;

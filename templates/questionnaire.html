@@ -38,7 +38,8 @@
             {% for section in template.sections %}
               <li>
                 <a class="section-link{% if section.key == active_section.key %} is-active{% endif %}"
-                   href="?section={{ section.key }}"
+                   href="/questionnaire?section={{ section.key }}"
+                   aria-label="{{ section.title }}"
                    {% if section.key == active_section.key %}aria-current="step"{% endif %}>
                   <span class="section-index">{{ "%02d"|format(loop.index) }}</span>
                   <span>{{ section.title }}</span>
