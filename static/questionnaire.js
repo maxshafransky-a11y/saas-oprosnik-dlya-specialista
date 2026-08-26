@@ -164,6 +164,44 @@
     line.append(" ", button);
   }
 
+  function addDownloadButton(line, documentId) {
+    const button = document.createElement("button");
+    button.className = "primary-button";
+    button.type = "button";
+    button.textContent = "Скачать";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        const result = await apiRequest(`/documents/${encodeURIComponent(documentId)}/download`, {
+          method: "POST",
+        });
+        window.location.assign(result.download_url);
+      } catch (_) {
+        button.disabled = false;
+        line.append(" Не удалось получить ссылку");
+      }
+    });
+    line.append(" ", button);
+  }
+
+  function documentStatusLabel(status) {
+    return {
+      uploading: "загрузка не завершена",
+      quarantined: "проверяем файл…",
+      scanning: "проверяем файл…",
+      ready: "готов",
+      rejected: "отклонён, загрузите другой файл",
+    }[status] || "статус неизвестен";
+  }
+
+  form.querySelectorAll("[data-existing-document]").forEach((line) => {
+    const documentId = line.dataset.documentId;
+    const status = line.dataset.documentStatus;
+    line.textContent = `${line.dataset.filename}: ${documentStatusLabel(status)}`;
+    if (status === "ready") addDownloadButton(line, documentId);
+    addDeleteButton(line, documentId);
+  });
+
   async function uploadFile(file, list, status) {
     const line = document.createElement("p");
     line.className = "question-helper";

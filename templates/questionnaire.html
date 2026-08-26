@@ -143,7 +143,16 @@
                     <input id="{{ question.key }}" name="{{ question.key }}" type="file"
                            accept="application/pdf,image/jpeg,image/png,image/heic" data-document-input multiple>
                   </label>
-                  <div class="question-helper" data-upload-list aria-live="polite"></div>
+                  <div class="question-helper" data-upload-list aria-live="polite">
+                    {% for document in documents %}
+                      <p data-existing-document
+                         data-document-id="{{ document.document_id }}"
+                         data-document-status="{{ document.status.value }}"
+                         data-filename="{{ document.original_name }}">
+                        {{ document.original_name }}: файл сохранён
+                      </p>
+                    {% endfor %}
+                  </div>
                 {% endif %}
 
                 {% if question.comment_enabled %}

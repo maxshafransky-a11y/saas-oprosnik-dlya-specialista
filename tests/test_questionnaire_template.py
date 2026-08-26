@@ -33,6 +33,7 @@ def _render() -> str:
         active_section_index=5,
         section_intro="Расскажите о привычном рационе.",
         state=state,
+        documents=[],
         csrf_token="test-csrf-token",
     )
 
