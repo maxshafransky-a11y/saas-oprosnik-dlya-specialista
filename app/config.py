@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_from: str = ""
     smtp_starttls: bool = True
+    scan_workspace_id: str | None = None
+    scan_poll_seconds: int = 5
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_seconds: float = 60.0
 
     @field_validator("app_secret_key")
     @classmethod

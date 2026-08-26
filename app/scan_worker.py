@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import socket
 import struct
+import time
 from collections.abc import Iterable
 from contextlib import closing
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+from app.config import get_settings
 from app.db import session_scope
 from app.documents_scan_service import (
     ScanJob,
@@ -21,6 +23,7 @@ from app.documents_scan_service import (
     retry_scan,
 )
 from app.documents_service import ALLOWED_DECLARED_MIMES, MAX_DOCUMENT_SIZE
+from app.storage import S3Storage
 
 READ_CHUNK_SIZE = 64 * 1024
 MAGIC_PREFIX_SIZE = 4096
@@ -277,3 +280,29 @@ def run_scan_once(
             )
         results.append(result)
     return tuple(results)
+
+
+def main() -> None:
+    settings = get_settings()
+    if not settings.scan_workspace_id:
+        raise SystemExit("SCAN_WORKSPACE_ID is required for the scan worker")
+    try:
+        workspace_id = UUID(settings.scan_workspace_id)
+    except ValueError as error:
+        raise SystemExit("SCAN_WORKSPACE_ID must be a UUID") from error
+    storage = S3Storage.from_settings(settings)
+    antivirus = ClamAVClient(
+        settings.clamav_host,
+        settings.clamav_port,
+        settings.clamav_timeout_seconds,
+    )
+    try:
+        while True:
+            run_scan_once(workspace_id, storage=storage, antivirus=antivirus)
+            time.sleep(settings.scan_poll_seconds)
+    except KeyboardInterrupt:
+        return
+
+
+if __name__ == "__main__":
+    main()
