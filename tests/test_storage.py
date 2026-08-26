@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from io import BytesIO
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
@@ -17,6 +18,7 @@ class RecordingClient:
         self.presign_calls: list[tuple[str, dict, int]] = []
         self.head_calls: list[dict] = []
         self.delete_calls: list[dict] = []
+        self.get_calls: list[dict] = []
         self.object_size = 42
 
     def generate_presigned_url(self, method: str, *, Params: dict, ExpiresIn: int) -> str:
@@ -30,6 +32,10 @@ class RecordingClient:
     def delete_object(self, **params: str) -> dict:
         self.delete_calls.append(params)
         return {}
+
+    def get_object(self, **params: str) -> dict:
+        self.get_calls.append(params)
+        return {"Body": BytesIO(b"payload")}
 
 
 class MissingClient(RecordingClient):
@@ -78,6 +84,17 @@ def test_head_maps_provider_not_found_to_safe_missing_signal() -> None:
 
     with pytest.raises(KeyError):
         adapter.head("quarantine/object")
+
+
+def test_open_read_returns_private_object_body() -> None:
+    client = RecordingClient()
+    adapter = storage.S3Storage("private-health", client=client)
+
+    body = adapter.open_read("quarantine/object")
+
+    assert body.read() == b"payload"
+    body.close()
+    assert client.get_calls == [{"Bucket": "private-health", "Key": "quarantine/object"}]
 
 
 @pytest.mark.parametrize("bucket", ["", "  "])

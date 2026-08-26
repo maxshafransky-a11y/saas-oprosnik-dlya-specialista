@@ -134,5 +134,19 @@ class S3Storage:
             raise ValueError("storage returned an invalid object size")
         return StorageHead(size_bytes=size_bytes)
 
+    def open_read(self, object_key: str):
+        key = _validate_key(object_key)
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as error:
+            error_code = str(error.response.get("Error", {}).get("Code", ""))
+            if error_code in {"404", "NoSuchKey", "NotFound"}:
+                raise KeyError(key) from None
+            raise
+        body = response.get("Body")
+        if body is None or not callable(getattr(body, "read", None)):
+            raise ValueError("storage returned an invalid object body")
+        return body
+
     def delete(self, object_key: str) -> None:
         self._client.delete_object(Bucket=self.bucket, Key=_validate_key(object_key))
