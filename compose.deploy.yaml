@@ -1,0 +1,55 @@
+# Deploy overlay. Use together with compose.yaml and an explicitly configured .env.
+x-health-intake-environment: &health-intake-environment
+  APP_ENV: ${APP_ENV:-staging}
+  APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY is required}
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+  DATABASE_OWNER_URL: ${DATABASE_OWNER_URL:?DATABASE_OWNER_URL is required}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+  SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
+  SMTP_FROM: ${SMTP_FROM:?SMTP_FROM is required}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+  STORAGE_BUCKET: ${STORAGE_BUCKET:?STORAGE_BUCKET is required}
+  STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:?STORAGE_ENDPOINT_URL is required}
+  STORAGE_REGION: ${STORAGE_REGION:?STORAGE_REGION is required}
+  STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+  STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+  SCAN_POLL_SECONDS: ${SCAN_POLL_SECONDS:-5}
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: 3310
+  CLAMAV_TIMEOUT_SECONDS: ${CLAMAV_TIMEOUT_SECONDS:-60}
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *health-intake-environment
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    restart: unless-stopped
+
+  scan-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/.venv/bin/python", "-m", "app.scan_worker"]
+    environment:
+      <<: *health-intake-environment
+      SCAN_WORKSPACE_ID: ${SCAN_WORKSPACE_ID:?SCAN_WORKSPACE_ID is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      disable: true
