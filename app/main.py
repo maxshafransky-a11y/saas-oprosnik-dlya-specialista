@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -18,12 +18,13 @@ from app.access import (
     issue_workspace_consent,
     verify_workspace_consent,
 )
-from app.answers import is_question_visible
+from app.answers import IncompleteQuestionnaire, is_question_visible
 from app.auth_service import (
     ChallengeUnavailable,
     authenticate_magic_token,
     authenticate_otp,
     issue_login_challenge,
+    revoke_session,
 )
 from app.config import get_settings
 from app.db import session_scope
@@ -43,8 +44,18 @@ from app.documents_service import (
     get_download_url,
 )
 from app.email import EmailDeliveryError, send_login_email
+from app.models import QuestionnaireResponseStatus
 from app.questionnaire import Question, load_questionnaire
-from app.questionnaire_service import RevisionConflict, get_questionnaire_state, save_answers
+from app.questionnaire_service import (
+    InvalidIdentifier,
+    InvalidResponseState,
+    ResponseReadOnly,
+    RevisionConflict,
+    get_questionnaire_state,
+    save_answers,
+    start_editing,
+    submit_response,
+)
 from app.security import canonical_ip, parse_magic_token
 from app.storage import S3Storage
 from app.web_auth import (
@@ -167,6 +178,79 @@ def create_app(
         if result.download_url is not None:
             payload["download_url"] = result.download_url
         return payload
+
+    def review_groups(template, state) -> list[SimpleNamespace]:
+        groups: list[SimpleNamespace] = []
+        for section in template.sections:
+            items: list[SimpleNamespace] = []
+            for question in section.questions:
+                if question.type == "document_upload" or not is_question_visible(
+                    question, state.answers
+                ):
+                    continue
+                answer = state.answers.get(question.key) or {}
+                value = answer.get("value") if isinstance(answer, dict) else None
+                if isinstance(value, list):
+                    display_value = ", ".join(str(item) for item in value)
+                elif value is None or value == "":
+                    display_value = "Не указано"
+                else:
+                    display_value = str(value)
+                comment = answer.get("comment", "") if isinstance(answer, dict) else ""
+                items.append(
+                    SimpleNamespace(
+                        number=question.source_number,
+                        label=question.label,
+                        value=display_value,
+                        comment=comment if isinstance(comment, str) else "",
+                    )
+                )
+            if items:
+                groups.append(SimpleNamespace(title=section.title, items=items))
+        return groups
+
+    def render_lifecycle(
+        request: Request,
+        context: AuthenticatedRequest,
+        *,
+        mode: str,
+        state=None,
+        message: str | None = None,
+        missing_keys: list[str] | None = None,
+        idempotency_key: str | None = None,
+        status_code: int = 200,
+    ):
+        template = load_questionnaire()
+        if state is None:
+            state = get_questionnaire_state(
+                context.session,
+                workspace_id=context.principal.workspace_id,
+                client_id=context.principal.client_id,
+                template=template,
+            )
+        labels = {
+            question.key: question.label
+            for section in template.sections
+            for question in section.questions
+        }
+        return templates.TemplateResponse(
+            request=request,
+            name="lifecycle.html",
+            context={
+                "template": template,
+                "state": state,
+                "mode": mode,
+                "message": message,
+                "missing_labels": [labels.get(key, key) for key in (missing_keys or [])],
+                "idempotency_key": idempotency_key or uuid4().hex,
+                "review_groups": review_groups(template, state),
+                "csrf_token": build_csrf_token(
+                    context.principal.session_id,
+                    get_settings().app_secret_key.get_secret_value(),
+                ),
+            },
+            status_code=status_code,
+        )
 
     def authenticated_redirect(authenticated):
         response = RedirectResponse(url="/questionnaire", status_code=303)
@@ -673,6 +757,116 @@ def create_app(
         context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
     ):
         return await save_questionnaire(request, context, section_key)
+
+    @application.get("/review", name="review")
+    def review(
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        template = load_questionnaire()
+        state = get_questionnaire_state(
+            context.session,
+            workspace_id=context.principal.workspace_id,
+            client_id=context.principal.client_id,
+            template=template,
+        )
+        if state.status is QuestionnaireResponseStatus.SUBMITTED:
+            return RedirectResponse(url="/complete", status_code=303)
+        return render_lifecycle(request, context, mode="review", state=state)
+
+    @application.post("/submit", name="submit")
+    async def submit(
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        form = await request.form()
+        require_state_change(request, context, form_text(form.get("csrf_token")))
+        try:
+            submit_response(
+                context.session,
+                workspace_id=context.principal.workspace_id,
+                client_id=context.principal.client_id,
+                template=load_questionnaire(),
+                expected_revision=int(form_text(form.get("revision"))),
+                idempotency_key=form_text(form.get("idempotency_key")),
+                request_id=request_id(request),
+            )
+        except IncompleteQuestionnaire as error:
+            return render_lifecycle(
+                request,
+                context,
+                mode="review",
+                message="Заполните обязательные поля перед отправкой.",
+                missing_keys=error.missing_keys,
+                idempotency_key=form_text(form.get("idempotency_key")),
+                status_code=422,
+            )
+        except RevisionConflict:
+            return render_lifecycle(
+                request,
+                context,
+                mode="review",
+                message="Ответы изменились в другой вкладке. Проверьте актуальные значения.",
+                idempotency_key=form_text(form.get("idempotency_key")),
+                status_code=409,
+            )
+        except ResponseReadOnly:
+            return RedirectResponse(url="/complete", status_code=303)
+        except InvalidResponseState:
+            raise HTTPException(status_code=409, detail="questionnaire is not editable") from None
+        except (InvalidIdentifier, TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="invalid submission") from None
+        return RedirectResponse(url="/complete", status_code=303)
+
+    @application.get("/complete", name="complete")
+    def complete(
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        template = load_questionnaire()
+        state = get_questionnaire_state(
+            context.session,
+            workspace_id=context.principal.workspace_id,
+            client_id=context.principal.client_id,
+            template=template,
+        )
+        if state.status is not QuestionnaireResponseStatus.SUBMITTED:
+            return RedirectResponse(url="/review", status_code=303)
+        return render_lifecycle(request, context, mode="complete", state=state)
+
+    @application.post("/edit", name="edit")
+    async def edit(
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        form = await request.form()
+        require_state_change(request, context, form_text(form.get("csrf_token")))
+        try:
+            start_editing(
+                context.session,
+                workspace_id=context.principal.workspace_id,
+                client_id=context.principal.client_id,
+                template=load_questionnaire(),
+                request_id=request_id(request),
+            )
+        except InvalidResponseState:
+            raise HTTPException(status_code=409, detail="questionnaire is not submitted") from None
+        except (InvalidIdentifier, ValueError):
+            raise HTTPException(status_code=422, detail="invalid edit request") from None
+        return RedirectResponse(url="/questionnaire", status_code=303)
+
+    @application.post("/auth/logout", name="logout")
+    async def logout(
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        form = await request.form()
+        require_state_change(request, context, form_text(form.get("csrf_token")))
+        token = request.cookies.get(SESSION_COOKIE_NAME, "")
+        revoke_session(context.session, token=token, request_id=request_id(request))
+        response = Response(status_code=204)
+        response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+        return response
 
     return application
 

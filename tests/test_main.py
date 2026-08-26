@@ -386,3 +386,58 @@ def test_questionnaire_route_rejects_unknown_section(authenticated_client) -> No
     )
 
     assert response.status_code == 404
+
+
+def test_review_renders_current_answers_and_idempotency_key(authenticated_client) -> None:
+    client, token = authenticated_client
+
+    response = client.get("/review", cookies={SESSION_COOKIE_NAME: token})
+
+    assert response.status_code == 200
+    assert "Проверьте ответы" in response.text
+    assert 'name="idempotency_key"' in response.text
+    assert 'name="csrf_token"' in response.text
+
+
+def test_submit_without_required_answers_returns_review_error(authenticated_client) -> None:
+    client, token = authenticated_client
+    session_id = parse_session_token(token).session_id
+    csrf = build_csrf_token(
+        session_id,
+        "dev-only-app-secret-key-not-for-production-change-me",
+    )
+
+    response = client.post(
+        "/submit",
+        data={
+            "csrf_token": csrf,
+            "revision": "0",
+            "idempotency_key": "a" * 32,
+        },
+        headers={"origin": "http://testserver"},
+        cookies={SESSION_COOKIE_NAME: token},
+    )
+
+    assert response.status_code == 422
+    assert "Заполните обязательные поля" in response.text
+    assert "Ваше имя, фамилия" in response.text
+
+
+def test_logout_revokes_session_and_clears_cookie(authenticated_client) -> None:
+    client, token = authenticated_client
+    session_id = parse_session_token(token).session_id
+    csrf = build_csrf_token(
+        session_id,
+        "dev-only-app-secret-key-not-for-production-change-me",
+    )
+
+    response = client.post(
+        "/auth/logout",
+        data={"csrf_token": csrf},
+        headers={"origin": "http://testserver"},
+        cookies={SESSION_COOKIE_NAME: token},
+    )
+
+    assert response.status_code == 204
+    assert SESSION_COOKIE_NAME in response.headers.get("set-cookie", "")
+    assert client.get("/questionnaire", cookies={SESSION_COOKIE_NAME: token}).status_code == 401

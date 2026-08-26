@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Проверка и отправка анкеты профиля здоровья">
+    <title>{{ template.title }} · {% if mode == "complete" %}Готово{% else %}Проверка{% endif %}</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Перейти к содержанию</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Состояние анкеты">
+        <div class="brand-mark" aria-hidden="true">ПЗ</div>
+        <p class="eyebrow">Личная анкета</p>
+        <h1 class="brand-title">{{ template.title }}</h1>
+        <p class="brand-copy">Проверьте ответы перед отправкой специалисту.</p>
+        <div class="progress-block" aria-label="Прогресс анкеты">
+          <div class="progress-meta">
+            <span>Заполнено {{ state.answers|length }} из 46</span>
+            <span>{{ state.current_revision }} изм.</span>
+          </div>
+          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="46"
+               aria-valuenow="{{ state.answers|length }}">
+            <span style="width: {{ (state.answers|length / 46 * 100)|round }}%"></span>
+          </div>
+        </div>
+      </aside>
+
+      <main id="main-content" class="main-content" tabindex="-1">
+        <div class="content-frame">
+          {% if mode == "review" %}
+            <header class="section-header">
+              <div>
+                <p class="eyebrow accent">Последний шаг</p>
+                <h2>Проверьте ответы</h2>
+                <p class="section-intro">Если всё верно, отправьте анкету. После отправки ответы можно будет изменить отдельной версией.</p>
+              </div>
+            </header>
+
+            {% if message %}
+              <section class="question-card" role="alert">
+                <p>{{ message }}</p>
+                {% if missing_labels %}
+                  <p class="field-label">Нужно заполнить</p>
+                  <ul>
+                    {% for label in missing_labels %}<li>{{ label }}</li>{% endfor %}
+                  </ul>
+                {% endif %}
+              </section>
+            {% endif %}
+
+            {% for group in review_groups %}
+              <section class="question-card" aria-labelledby="review-{{ loop.index }}">
+                <p class="eyebrow accent" id="review-{{ loop.index }}">{{ group.title }}</p>
+                {% for item in group.items %}
+                  <div class="comment-field">
+                    <p class="field-label">{{ "%02d"|format(item.number) }} · {{ item.label }}</p>
+                    <p>{{ item.value }}</p>
+                    {% if item.comment %}<p class="question-helper">Пояснение: {{ item.comment }}</p>{% endif %}
+                  </div>
+                {% endfor %}
+              </section>
+            {% endfor %}
+
+            <form method="post" action="/submit">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="revision" value="{{ state.current_revision }}">
+              <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+              <div class="form-actions">
+                <a class="section-link" href="/questionnaire">Вернуться к ответам</a>
+                <button class="primary-button" type="submit">Отправить анкету <span aria-hidden="true">→</span></button>
+              </div>
+            </form>
+          {% else %}
+            <header class="section-header">
+              <div>
+                <p class="eyebrow accent">Готово</p>
+                <h2>Анкета отправлена</h2>
+                <p class="section-intro">Версия {{ state.last_submitted_version }} сохранена. Специалист увидит актуальные ответы в защищённой карточке.</p>
+              </div>
+            </header>
+            <section class="question-card" aria-labelledby="complete-title">
+              <h3 id="complete-title">Спасибо за ответы</h3>
+              <p>{{ template.completion }}</p>
+              <form method="post" action="/edit">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-actions">
+                  <span></span>
+                  <button class="primary-button" type="submit">Изменить ответы</button>
+                </div>
+              </form>
+            </section>
+          {% endif %}
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
