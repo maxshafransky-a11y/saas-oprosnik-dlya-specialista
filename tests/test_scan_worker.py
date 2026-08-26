@@ -59,9 +59,7 @@ def test_scan_object_streams_hash_and_returns_clean_outcome() -> None:
     data = b"%PDF-1.7\n" + b"x" * (scan_worker.READ_CHUNK_SIZE + 11)
     antivirus = RecordingAntivirus()
 
-    outcome = scan_worker.scan_object(
-        _job(data), storage=FakeStorage(data), antivirus=antivirus
-    )
+    outcome = scan_worker.scan_object(_job(data), storage=FakeStorage(data), antivirus=antivirus)
 
     assert antivirus.data == data
     assert outcome.clean is True
@@ -73,9 +71,7 @@ def test_scan_object_rejects_size_and_magic_mismatch() -> None:
     data = b"not a pdf"
     antivirus = RecordingAntivirus()
 
-    outcome = scan_worker.scan_object(
-        _job(data), storage=FakeStorage(data), antivirus=antivirus
-    )
+    outcome = scan_worker.scan_object(_job(data), storage=FakeStorage(data), antivirus=antivirus)
 
     assert outcome.clean is False
     assert outcome.rejection_reason == "mime_mismatch"
@@ -86,6 +82,7 @@ def test_scan_object_rejects_size_and_magic_mismatch() -> None:
             storage=FakeStorage(data + b"extra"),
             antivirus=RecordingAntivirus(),
         )
+
 
 class FakeSocket:
     def __init__(self, response: bytes) -> None:

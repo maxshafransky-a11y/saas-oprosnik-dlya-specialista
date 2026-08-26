@@ -213,9 +213,7 @@ class ClamAVClient:
     def _read_response(connection) -> str:
         response = bytearray()
         while (
-            len(response) < CLAMAV_RESPONSE_SIZE
-            and b"\n" not in response
-            and b"\0" not in response
+            len(response) < CLAMAV_RESPONSE_SIZE and b"\n" not in response and b"\0" not in response
         ):
             try:
                 chunk = connection.recv(CLAMAV_RESPONSE_SIZE - len(response))
@@ -225,9 +223,7 @@ class ClamAVClient:
                 break
             response.extend(chunk)
         terminators = [
-            position
-            for position in (response.find(b"\n"), response.find(b"\0"))
-            if position >= 0
+            position for position in (response.find(b"\n"), response.find(b"\0")) if position >= 0
         ]
         if not terminators:
             raise ScannerUnavailable("scanner_unavailable")
