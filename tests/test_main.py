@@ -441,3 +441,54 @@ def test_logout_revokes_session_and_clears_cookie(authenticated_client) -> None:
     assert response.status_code == 204
     assert SESSION_COOKIE_NAME in response.headers.get("set-cookie", "")
     assert client.get("/questionnaire", cookies={SESSION_COOKIE_NAME: token}).status_code == 401
+
+
+def test_answer_autosave_returns_next_revision(authenticated_client) -> None:
+    client, token = authenticated_client
+    session_id = parse_session_token(token).session_id
+    csrf = build_csrf_token(
+        session_id,
+        "dev-only-app-secret-key-not-for-production-change-me",
+    )
+
+    response = client.put(
+        "/answers/full_name",
+        json={"revision": 0, "answer": {"value": "Анна"}},
+        headers={"origin": "http://testserver", "x-csrf-token": csrf},
+        cookies={SESSION_COOKIE_NAME: token},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "question_key": "full_name",
+        "revision": 1,
+        "section_key": "personal_data",
+    }
+
+
+def test_answer_autosave_exposes_revision_conflict(authenticated_client) -> None:
+    client, token = authenticated_client
+    session_id = parse_session_token(token).session_id
+    csrf = build_csrf_token(
+        session_id,
+        "dev-only-app-secret-key-not-for-production-change-me",
+    )
+    headers = {"origin": "http://testserver", "x-csrf-token": csrf}
+    cookies = {SESSION_COOKIE_NAME: token}
+
+    first = client.put(
+        "/answers/full_name",
+        json={"revision": 0, "answer": {"value": "Анна"}},
+        headers=headers,
+        cookies=cookies,
+    )
+    second = client.put(
+        "/answers/full_name",
+        json={"revision": 0, "answer": {"value": "Иван"}},
+        headers=headers,
+        cookies=cookies,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["current_revision"] == 1

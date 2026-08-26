@@ -179,6 +179,72 @@ def create_app(
             payload["download_url"] = result.download_url
         return payload
 
+    @application.put("/answers/{question_key}", name="autosave_answer")
+    async def autosave_answer(
+        question_key: str,
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        require_state_change(request, context, request.headers.get("x-csrf-token", ""))
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid answer payload") from None
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"revision", "answer"}
+            or isinstance(payload.get("revision"), bool)
+            or not isinstance(payload.get("revision"), int)
+            or payload["revision"] < 0
+            or (payload["answer"] is not None and not isinstance(payload["answer"], dict))
+        ):
+            raise HTTPException(status_code=422, detail="invalid answer payload")
+
+        template = load_questionnaire()
+        location = next(
+            (
+                (section.key, question)
+                for section in template.sections
+                for question in section.questions
+                if question.key == question_key
+            ),
+            None,
+        )
+        if location is None:
+            raise HTTPException(status_code=404, detail="question not found")
+        section_key, question = location
+        if question.type == "document_upload":
+            raise HTTPException(status_code=422, detail="invalid answer payload")
+        try:
+            result = save_answers(
+                context.session,
+                workspace_id=context.principal.workspace_id,
+                client_id=context.principal.client_id,
+                template=template,
+                section_key=section_key,
+                changes={question_key: payload["answer"]},
+                expected_revision=payload["revision"],
+            )
+        except RevisionConflict as error:
+            return JSONResponse(
+                {
+                    "detail": "answers changed; reload and retry",
+                    "current_revision": error.current_revision,
+                },
+                status_code=409,
+            )
+        except (ResponseReadOnly, InvalidResponseState):
+            raise HTTPException(status_code=409, detail="questionnaire is not editable") from None
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="invalid answer payload") from None
+        return JSONResponse(
+            {
+                "question_key": question_key,
+                "revision": result.new_revision,
+                "section_key": result.current_section_key,
+            }
+        )
+
     def review_groups(template, state) -> list[SimpleNamespace]:
         groups: list[SimpleNamespace] = []
         for section in template.sections:
