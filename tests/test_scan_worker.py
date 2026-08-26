@@ -108,7 +108,7 @@ class FakeSocket:
 
 @pytest.mark.parametrize(
     ("response", "clean"),
-    [(b"stream: OK\n", True), (b"stream: Eicar FOUND\n", False)],
+    [(b"stream: OK\0", True), (b"stream: Eicar FOUND\0", False)],
 )
 def test_clamav_client_uses_instream_protocol(monkeypatch, response: bytes, clean: bool) -> None:
     connection = FakeSocket(response)

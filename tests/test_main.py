@@ -112,6 +112,23 @@ def test_health_is_available_without_openapi_surface() -> None:
     assert client.get("/openapi.json").status_code == 404
 
 
+def test_ready_fails_closed_when_database_is_not_configured() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable"}
+
+
+def test_hsts_is_only_enabled_for_production_like_environment(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+
+    response = TestClient(create_app()).get("/health")
+
+    assert response.headers["strict-transport-security"] == "max-age=31536000"
+
+
 def test_csrf_token_is_bound_to_session() -> None:
     session_id = uuid4()
     other_session_id = uuid4()

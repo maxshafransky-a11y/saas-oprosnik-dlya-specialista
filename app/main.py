@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 
 from app.access import (
     CONSENT_COOKIE_NAME,
@@ -100,10 +102,24 @@ def create_app(
         response = await call_next(request)
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        if os.environ.get("APP_ENV", "development").strip().casefold() in {
+            "staging",
+            "production",
+        }:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return response
 
     @application.get("/health", include_in_schema=False)
     async def health() -> JSONResponse:
+        return JSONResponse({"status": "ok"})
+
+    @application.get("/ready", include_in_schema=False)
+    async def ready() -> JSONResponse:
+        try:
+            with session_scope() as session:
+                session.execute(text("SELECT 1"))
+        except Exception:
+            return JSONResponse({"status": "unavailable"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
     def access_workspace(public_slug: str):
