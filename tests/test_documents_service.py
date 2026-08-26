@@ -325,6 +325,52 @@ def test_document_status_is_tenant_scoped(document_context, migrated_database) -
         engine.dispose()
 
 
+def test_list_documents_is_client_scoped_and_excludes_deleted(document_context) -> None:
+    owner_url, engine, workspace_id, client_id = document_context
+    storage = FakeStorage()
+    try:
+        with _runtime_session(engine, workspace_id) as session:
+            first = documents_service.create_upload_intent(
+                session,
+                workspace_id,
+                client_id,
+                original_name="first.pdf",
+                declared_mime="application/pdf",
+                size_bytes=1,
+                storage=storage,
+                request_id="c" * 32,
+            )
+            second = documents_service.create_upload_intent(
+                session,
+                workspace_id,
+                client_id,
+                original_name="second.pdf",
+                declared_mime="application/pdf",
+                size_bytes=1,
+                storage=storage,
+                request_id="d" * 32,
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            documents_service.delete_document(
+                session,
+                workspace_id,
+                client_id,
+                first.document_id,
+                storage=storage,
+                request_id="e" * 32,
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            result = documents_service.list_documents(session, workspace_id, client_id)
+            session.rollback()
+    finally:
+        engine.dispose()
+
+    assert [item.document_id for item in result] == [second.document_id]
+    assert result[0].original_name == "second.pdf"
+
+
 def test_ready_document_gets_short_download_url_and_audit(document_context) -> None:
     owner_url, engine, workspace_id, client_id = document_context
     storage = FakeStorage()

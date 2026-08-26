@@ -44,6 +44,7 @@ from app.documents_service import (
     delete_document,
     get_document_status,
     get_download_url,
+    list_documents,
 )
 from app.email import EmailDeliveryError, send_login_email
 from app.models import QuestionnaireResponseStatus
@@ -302,6 +303,7 @@ def create_app(
         message: str | None = None,
         missing_keys: list[str] | None = None,
         idempotency_key: str | None = None,
+        documents=None,
         status_code: int = 200,
     ):
         template = load_questionnaire()
@@ -317,6 +319,12 @@ def create_app(
             for section in template.sections
             for question in section.questions
         }
+        if documents is None:
+            documents = list_documents(
+                context.session,
+                context.principal.workspace_id,
+                context.principal.client_id,
+            )
         return templates.TemplateResponse(
             request=request,
             name="lifecycle.html",
@@ -328,6 +336,7 @@ def create_app(
                 "missing_labels": [labels.get(key, key) for key in (missing_keys or [])],
                 "idempotency_key": idempotency_key or uuid4().hex,
                 "review_groups": review_groups(template, state),
+                "documents": documents,
                 "csrf_token": build_csrf_token(
                     context.principal.session_id,
                     get_settings().app_secret_key.get_secret_value(),
@@ -735,7 +744,6 @@ def create_app(
             client_id=context.principal.client_id,
             template=questionnaire_template,
         )
-        context.session.commit()
         section = requested_section or state.current_section_key
         active_index = section_index(questionnaire_template, section)
         active_section = sections[active_index]
@@ -748,6 +756,12 @@ def create_app(
             question_count=question_count,
             current_revision=state.current_revision,
         )
+        documents = list_documents(
+            context.session,
+            context.principal.workspace_id,
+            context.principal.client_id,
+        )
+        context.session.commit()
         return templates.TemplateResponse(
             request=request,
             name="questionnaire.html",
@@ -757,6 +771,7 @@ def create_app(
                 "active_section_index": active_index + 1,
                 "section_intro": questionnaire_template.intro,
                 "state": view_state,
+                "documents": documents,
                 "csrf_token": build_csrf_token(
                     context.principal.session_id,
                     get_settings().app_secret_key.get_secret_value(),
@@ -862,10 +877,15 @@ def create_app(
             client_id=context.principal.client_id,
             template=template,
         )
+        documents = list_documents(
+            context.session,
+            context.principal.workspace_id,
+            context.principal.client_id,
+        )
         context.session.commit()
         if state.status is QuestionnaireResponseStatus.SUBMITTED:
             return RedirectResponse(url="/complete", status_code=303)
-        return render_lifecycle(request, context, mode="review", state=state)
+        return render_lifecycle(request, context, mode="review", state=state, documents=documents)
 
     @application.post("/submit", name="submit")
     async def submit(
@@ -924,10 +944,15 @@ def create_app(
             client_id=context.principal.client_id,
             template=template,
         )
+        documents = list_documents(
+            context.session,
+            context.principal.workspace_id,
+            context.principal.client_id,
+        )
         context.session.commit()
         if state.status is not QuestionnaireResponseStatus.SUBMITTED:
             return RedirectResponse(url="/review", status_code=303)
-        return render_lifecycle(request, context, mode="complete", state=state)
+        return render_lifecycle(request, context, mode="complete", state=state, documents=documents)
 
     @application.post("/edit", name="edit")
     async def edit(

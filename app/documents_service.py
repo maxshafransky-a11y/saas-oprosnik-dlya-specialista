@@ -197,6 +197,21 @@ def get_document_status(
     return _document_view(_load_document(session, workspace_id, client_id, document_id, lock=False))
 
 
+def list_documents(
+    session: Session, workspace_id: UUID, client_id: UUID
+) -> tuple[DocumentResult, ...]:
+    documents = session.scalars(
+        select(Document)
+        .where(
+            Document.workspace_id == workspace_id,
+            Document.client_id == client_id,
+            Document.status != DocumentStatus.DELETED,
+        )
+        .order_by(Document.created_at, Document.id)
+    ).all()
+    return tuple(_document_view(document) for document in documents)
+
+
 def get_download_url(
     session: Session,
     workspace_id: UUID,
