@@ -27,6 +27,7 @@ class FakeStorage:
     presigned: list[tuple[str, str, int, int]] = field(default_factory=list)
     downloads: list[tuple[str, int]] = field(default_factory=list)
     head_calls: list[str] = field(default_factory=list)
+    deletes: list[str] = field(default_factory=list)
 
     def presign_put(
         self, object_key: str, content_type: str, content_length: int, expires_seconds: int
@@ -41,6 +42,9 @@ class FakeStorage:
     def presign_get(self, object_key: str, expires_seconds: int) -> str:
         self.downloads.append((object_key, expires_seconds))
         return f"https://storage.test/get/{object_key}"
+
+    def delete(self, object_key: str) -> None:
+        self.deletes.append(object_key)
 
 
 def _seed_client(owner_url: URL) -> tuple[UUID, UUID]:
@@ -419,3 +423,58 @@ def test_uploading_document_cannot_be_downloaded(document_context) -> None:
             session.rollback()
     finally:
         engine.dispose()
+
+
+def test_delete_removes_object_marks_document_and_audits(document_context) -> None:
+    owner_url, engine, workspace_id, client_id = document_context
+    storage = FakeStorage()
+    try:
+        with _runtime_session(engine, workspace_id) as session:
+            intent = documents_service.create_upload_intent(
+                session,
+                workspace_id,
+                client_id,
+                original_name="analysis.pdf",
+                declared_mime="application/pdf",
+                size_bytes=1,
+                storage=storage,
+                request_id="9" * 32,
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            result = documents_service.delete_document(
+                session,
+                workspace_id,
+                client_id,
+                intent.document_id,
+                storage=storage,
+                request_id="a" * 32,
+                now=datetime(2026, 1, 3, tzinfo=UTC),
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            repeated = documents_service.delete_document(
+                session,
+                workspace_id,
+                client_id,
+                intent.document_id,
+                storage=storage,
+                request_id="b" * 32,
+            )
+            session.commit()
+    finally:
+        engine.dispose()
+
+    assert result.status is documents_service.DocumentStatus.DELETED
+    assert repeated.status is documents_service.DocumentStatus.DELETED
+    assert storage.deletes == [intent.object_key]
+    assert _owner_rows(
+        owner_url,
+        workspace_id,
+        "SELECT status, deleted_at FROM documents",
+    ) == [{"status": "deleted", "deleted_at": datetime(2026, 1, 3, tzinfo=UTC)}]
+    assert _owner_rows(
+        owner_url,
+        workspace_id,
+        "SELECT event_type, request_id, metadata_jsonb FROM audit_events",
+    ) == [{"event_type": "document_deleted", "request_id": "a" * 32, "metadata_jsonb": {}}]

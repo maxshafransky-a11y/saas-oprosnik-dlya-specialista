@@ -30,6 +30,8 @@ class StoragePort(Protocol):
 
     def presign_get(self, object_key: str, expires_seconds: int) -> str: ...
 
+    def delete(self, object_key: str) -> None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class StorageHead:
@@ -227,6 +229,42 @@ def get_download_url(
     )
     session.flush()
     return _document_view(document, download_url=download_url)
+
+
+def delete_document(
+    session: Session,
+    workspace_id: UUID,
+    client_id: UUID,
+    document_id: UUID,
+    *,
+    storage: StoragePort,
+    request_id: str,
+    now: datetime | None = None,
+) -> DocumentResult:
+    _validate_request_id(request_id)
+    document = _load_document(session, workspace_id, client_id, document_id, lock=True)
+    if document.status is DocumentStatus.DELETED:
+        return _document_view(document)
+    storage.delete(document.object_key)
+    occurred_at = _utc(now)
+    document.status = DocumentStatus.DELETED
+    document.deleted_at = occurred_at
+    session.add(
+        AuditEvent(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            client_id=client_id,
+            actor_type="client",
+            event_type="document_deleted",
+            target_type="document",
+            target_id=document.id,
+            occurred_at=occurred_at,
+            request_id=request_id,
+            metadata_jsonb={},
+        )
+    )
+    session.flush()
+    return _document_view(document)
 
 
 def complete_upload(
