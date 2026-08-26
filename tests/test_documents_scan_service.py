@@ -175,6 +175,7 @@ def test_ready_finalization_is_atomic_and_idempotent(scan_context) -> None:
                 workspace_id,
                 client_id,
                 document_id,
+                attempt=1,
                 outcome=documents_scan_service.ScanOutcome(
                     clean=True, detected_mime="application/pdf", sha256=digest
                 ),
@@ -188,6 +189,7 @@ def test_ready_finalization_is_atomic_and_idempotent(scan_context) -> None:
                 workspace_id,
                 client_id,
                 document_id,
+                attempt=1,
                 outcome=documents_scan_service.ScanOutcome(
                     clean=True, detected_mime="image/png", sha256="c" * 64
                 ),
@@ -249,10 +251,12 @@ def test_rejected_finalization_uses_fixed_reason_and_invalid_output_rolls_back(
                     workspace_id,
                     client_id,
                     document_id,
+                    attempt=1,
                     outcome=documents_scan_service.ScanOutcome(
                         clean=True, detected_mime="application/zip", sha256="d" * 64
                     ),
                     request_id="e" * 32,
+                    now=now,
                 )
             session.rollback()
         with _runtime_session(engine, workspace_id) as session:
@@ -261,6 +265,7 @@ def test_rejected_finalization_uses_fixed_reason_and_invalid_output_rolls_back(
                 workspace_id,
                 client_id,
                 document_id,
+                attempt=1,
                 outcome=documents_scan_service.ScanOutcome(
                     clean=False, detected_mime="application/zip", rejection_reason="mime_mismatch"
                 ),
@@ -281,6 +286,44 @@ def test_rejected_finalization_uses_fixed_reason_and_invalid_output_rolls_back(
     assert rows == [
         {"status": "rejected", "rejection_reason": "mime_mismatch", "scan_lease_until": None}
     ]
+
+
+def test_stale_attempt_cannot_finalize_after_reclaim(scan_context) -> None:
+    owner_url, engine, workspace_id, client_id = scan_context
+    now = datetime(2026, 1, 2, tzinfo=UTC)
+    try:
+        with _runtime_session(engine, workspace_id) as session:
+            document_id = _insert_document(session, workspace_id, client_id)
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            first = documents_scan_service.claim_scan_jobs(
+                session, workspace_id, now=now, lease_seconds=1
+            )
+            session.commit()
+        with _runtime_session(engine, workspace_id) as session:
+            second = documents_scan_service.claim_scan_jobs(
+                session, workspace_id, now=now + timedelta(seconds=2)
+            )
+            session.commit()
+        assert first[0].attempt == 1
+        assert second[0].attempt == 2
+        with _runtime_session(engine, workspace_id) as session:
+            with pytest.raises(documents_scan_service.InvalidScanState):
+                documents_scan_service.finish_scan(
+                    session,
+                    workspace_id,
+                    client_id,
+                    document_id,
+                    attempt=1,
+                    outcome=documents_scan_service.ScanOutcome(
+                        clean=True, detected_mime="application/pdf", sha256="a" * 64
+                    ),
+                    request_id="1" * 32,
+                    now=now + timedelta(seconds=2),
+                )
+            session.rollback()
+    finally:
+        engine.dispose()
 
 
 def test_claim_is_tenant_scoped(scan_context, migrated_database) -> None:

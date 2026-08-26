@@ -361,6 +361,7 @@ def test_ready_document_gets_short_download_url_and_audit(document_context) -> N
                 workspace_id,
                 client_id,
                 intent.document_id,
+                attempt=1,
                 outcome=documents_scan_service.ScanOutcome(
                     clean=True, detected_mime="application/pdf", sha256="a" * 64
                 ),

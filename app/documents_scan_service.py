@@ -24,6 +24,7 @@ _REJECTION_REASONS = frozenset({"invalid_object", "malware", "mime_mismatch", "s
 @dataclass(frozen=True, slots=True)
 class ScanJob:
     document_id: UUID
+    client_id: UUID
     object_key: str
     declared_mime: str
     size_bytes: int
@@ -86,6 +87,11 @@ def _validate_lease(limit: int, lease_seconds: int) -> None:
         or not MIN_LEASE_SECONDS <= lease_seconds <= MAX_LEASE_SECONDS
     ):
         raise InvalidScanRequest("scan lease is invalid")
+
+
+def _validate_attempt(attempt: int) -> None:
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
+        raise InvalidScanRequest("scan attempt is invalid")
 
 
 def _validate_text(value: str | None, field: str) -> str | None:
@@ -170,6 +176,7 @@ def claim_scan_jobs(
         jobs.append(
             ScanJob(
                 document_id=document.id,
+                client_id=document.client_id,
                 object_key=document.object_key,
                 declared_mime=document.declared_mime,
                 size_bytes=document.size_bytes,
@@ -187,11 +194,14 @@ def finish_scan(
     client_id: UUID,
     document_id: UUID,
     *,
+    attempt: int,
     outcome: ScanOutcome,
     request_id: str,
     now: datetime | None = None,
 ) -> ScanResult:
     _validate_request_id(request_id)
+    _validate_attempt(attempt)
+    occurred_at = _utc(now)
     document = session.execute(
         select(Document)
         .where(
@@ -205,10 +215,14 @@ def finish_scan(
         raise ScanDocumentNotFound("document not found")
     if document.status in {DocumentStatus.READY, DocumentStatus.REJECTED}:
         return _result(document)
-    if document.status is not DocumentStatus.SCANNING:
+    if (
+        document.status is not DocumentStatus.SCANNING
+        or document.scan_attempts != attempt
+        or document.scan_lease_until is None
+        or document.scan_lease_until <= occurred_at
+    ):
         raise InvalidScanState("document is not leased for scanning")
     normalized = _validate_outcome(outcome)
-    occurred_at = _utc(now)
     document.detected_mime = normalized.detected_mime
     document.sha256 = normalized.sha256
     document.scan_lease_until = None
