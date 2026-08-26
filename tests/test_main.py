@@ -144,6 +144,16 @@ def test_magic_link_script_consumes_fragment_without_client_storage() -> None:
     assert "sessionStorage" not in script
 
 
+def test_questionnaire_script_uses_server_autosave_and_document_endpoints() -> None:
+    script = (Path(__file__).parents[1] / "static" / "questionnaire.js").read_text(encoding="utf-8")
+
+    assert 'method: "PUT"' in script
+    assert "/answers/" in script
+    assert "/documents/uploads" in script
+    assert "localStorage" not in script
+    assert "sessionStorage" not in script
+
+
 def test_public_invite_requires_consent_and_opens_email_access(public_client) -> None:
     client, public_slug = public_client
 
