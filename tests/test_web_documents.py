@@ -28,6 +28,7 @@ class FakeStorage:
     def __init__(self) -> None:
         self.last_key: str | None = None
         self.sizes: dict[str, int] = {}
+        self.deletes: list[str] = []
 
     def presign_put(
         self, object_key: str, content_type: str, content_length: int, expires_seconds: int
@@ -40,6 +41,9 @@ class FakeStorage:
 
     def presign_get(self, object_key: str, expires_seconds: int) -> str:
         return f"https://storage.test/get/{object_key}"
+
+    def delete(self, object_key: str) -> None:
+        self.deletes.append(object_key)
 
 
 @pytest.fixture
@@ -146,6 +150,15 @@ def test_document_http_flow_is_tenant_scoped_and_quarantined(document_client) ->
         cookies=cookies,
     )
     assert download.status_code == 409
+
+    deleted = client.delete(
+        f"/documents/{document_id}",
+        headers=_headers(csrf),
+        cookies=cookies,
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "deleted"
+    assert storage.deletes == [storage.last_key]
 
 
 def test_document_http_rejects_invalid_metadata_and_csrf(document_client) -> None:

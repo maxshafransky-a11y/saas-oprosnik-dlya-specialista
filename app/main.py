@@ -38,6 +38,7 @@ from app.documents_service import (
     UploadSizeMismatch,
     complete_upload,
     create_upload_intent,
+    delete_document,
     get_document_status,
     get_download_url,
 )
@@ -474,6 +475,28 @@ def create_app(
             raise HTTPException(status_code=404, detail="document not found") from None
         except (InvalidDocumentState, InvalidRequestId, UploadIncomplete):
             raise HTTPException(status_code=409, detail="document is not ready") from None
+        return JSONResponse(document_payload(result))
+
+    @application.delete("/documents/{document_id}", name="delete_document")
+    def delete_document_route(
+        document_id: UUID,
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        require_state_change(request, context, request.headers.get("x-csrf-token", ""))
+        try:
+            result = delete_document(
+                context.session,
+                context.principal.workspace_id,
+                context.principal.client_id,
+                document_id,
+                storage=document_storage(),
+                request_id=request_id(request),
+            )
+        except DocumentNotFound:
+            raise HTTPException(status_code=404, detail="document not found") from None
+        except InvalidRequestId:
+            raise HTTPException(status_code=422, detail="invalid request id") from None
         return JSONResponse(document_payload(result))
 
     def section_index(template, section_key: str | None) -> int:
