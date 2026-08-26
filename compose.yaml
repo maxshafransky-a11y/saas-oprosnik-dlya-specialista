@@ -18,7 +18,7 @@ services:
       start_period: 5s
 
   clamav:
-    image: clamav/clamav:1.4.3
+    image: clamav/clamav:1.4.6
     ports:
       - "127.0.0.1:3310:3310"
     volumes:
