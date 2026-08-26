@@ -27,10 +27,25 @@ from app.auth_service import (
 )
 from app.config import get_settings
 from app.db import session_scope
+from app.documents_service import (
+    DocumentNotFound,
+    DocumentResult,
+    InvalidDocumentState,
+    InvalidRequestId,
+    InvalidUpload,
+    StoragePort,
+    UploadIncomplete,
+    UploadSizeMismatch,
+    complete_upload,
+    create_upload_intent,
+    get_document_status,
+    get_download_url,
+)
 from app.email import EmailDeliveryError, send_login_email
 from app.questionnaire import Question, load_questionnaire
 from app.questionnaire_service import RevisionConflict, get_questionnaire_state, save_answers
 from app.security import canonical_ip, parse_magic_token
+from app.storage import S3Storage
 from app.web_auth import (
     SESSION_COOKIE_NAME,
     AuthenticatedRequest,
@@ -53,7 +68,10 @@ SECURITY_HEADERS = {
 }
 
 
-def create_app(email_sender: Callable[..., None] | None = None) -> FastAPI:
+def create_app(
+    email_sender: Callable[..., None] | None = None,
+    storage: StoragePort | None = None,
+) -> FastAPI:
     login_email_sender = email_sender or send_login_email
     application = FastAPI(
         title="Health Intake",
@@ -113,6 +131,41 @@ def create_app(email_sender: Callable[..., None] | None = None) -> FastAPI:
 
     def secure_cookie() -> bool:
         return get_settings().app_env.strip().casefold() not in {"development", "test"}
+
+    def document_storage() -> StoragePort:
+        if storage is not None:
+            return storage
+        try:
+            return S3Storage.from_settings(get_settings())
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=503, detail="document storage unavailable") from None
+
+    def request_id(request: Request) -> str:
+        return request.headers.get("x-request-id") or uuid4().hex
+
+    def require_state_change(request: Request, context: AuthenticatedRequest, candidate: str):
+        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+            raise HTTPException(status_code=403, detail="invalid origin")
+        if not valid_csrf_token(
+            context.principal.session_id,
+            candidate,
+            get_settings().app_secret_key.get_secret_value(),
+        ):
+            raise HTTPException(status_code=403, detail="invalid csrf token")
+
+    def document_payload(result: DocumentResult) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "document_id": str(result.document_id),
+            "original_name": result.original_name,
+            "declared_mime": result.declared_mime,
+            "size_bytes": result.size_bytes,
+            "status": result.status.value,
+        }
+        if result.upload_url is not None:
+            payload["upload_url"] = result.upload_url
+        if result.download_url is not None:
+            payload["download_url"] = result.download_url
+        return payload
 
     def authenticated_redirect(authenticated):
         response = RedirectResponse(url="/questionnaire", status_code=303)
@@ -323,6 +376,105 @@ def create_app(email_sender: Callable[..., None] | None = None) -> FastAPI:
                 status_code=422,
             )
         return authenticated_redirect(authenticated)
+
+    @application.post("/documents/uploads", name="create_document_upload", status_code=201)
+    async def create_document_upload(
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        require_state_change(request, context, request.headers.get("x-csrf-token", ""))
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid upload metadata") from None
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=422, detail="invalid upload metadata")
+
+        template = load_questionnaire()
+        state = get_questionnaire_state(
+            context.session,
+            workspace_id=context.principal.workspace_id,
+            client_id=context.principal.client_id,
+            template=template,
+        )
+        try:
+            result = create_upload_intent(
+                context.session,
+                context.principal.workspace_id,
+                context.principal.client_id,
+                original_name=payload.get("original_name"),
+                declared_mime=payload.get("declared_mime"),
+                size_bytes=payload.get("size_bytes"),
+                storage=document_storage(),
+                request_id=request_id(request),
+                response_id=state.response_id,
+                question_key="documents",
+            )
+        except (InvalidUpload, InvalidRequestId, TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="invalid upload metadata") from None
+        return JSONResponse(document_payload(result), status_code=201)
+
+    @application.post("/documents/{document_id}/complete", name="complete_document_upload")
+    async def complete_document_upload(
+        document_id: UUID,
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        require_state_change(request, context, request.headers.get("x-csrf-token", ""))
+        try:
+            result = complete_upload(
+                context.session,
+                context.principal.workspace_id,
+                context.principal.client_id,
+                document_id,
+                storage=document_storage(),
+                request_id=request_id(request),
+            )
+        except DocumentNotFound:
+            raise HTTPException(status_code=404, detail="document not found") from None
+        except (InvalidDocumentState, InvalidRequestId, UploadIncomplete, UploadSizeMismatch):
+            raise HTTPException(
+                status_code=409, detail="document is not ready to complete"
+            ) from None
+        return JSONResponse(document_payload(result))
+
+    @application.get("/documents/{document_id}/status", name="document_status")
+    def document_status(
+        document_id: UUID,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        try:
+            result = get_document_status(
+                context.session,
+                context.principal.workspace_id,
+                context.principal.client_id,
+                document_id,
+            )
+        except DocumentNotFound:
+            raise HTTPException(status_code=404, detail="document not found") from None
+        return JSONResponse(document_payload(result))
+
+    @application.post("/documents/{document_id}/download", name="document_download")
+    def document_download(
+        document_id: UUID,
+        request: Request,
+        context: AuthenticatedRequest = Depends(require_authenticated_session),  # noqa: B008
+    ):
+        require_state_change(request, context, request.headers.get("x-csrf-token", ""))
+        try:
+            result = get_download_url(
+                context.session,
+                context.principal.workspace_id,
+                context.principal.client_id,
+                document_id,
+                storage=document_storage(),
+                request_id=request_id(request),
+            )
+        except DocumentNotFound:
+            raise HTTPException(status_code=404, detail="document not found") from None
+        except (InvalidDocumentState, InvalidRequestId, UploadIncomplete):
+            raise HTTPException(status_code=409, detail="document is not ready") from None
+        return JSONResponse(document_payload(result))
 
     def section_index(template, section_key: str | None) -> int:
         if section_key is None:
