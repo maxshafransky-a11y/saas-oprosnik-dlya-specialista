@@ -152,6 +152,16 @@ def test_security_headers_are_present_on_html_and_json_responses() -> None:
     assert response.headers["x-frame-options"] == "DENY"
 
 
+def test_csp_allows_explicit_public_storage_endpoint(monkeypatch) -> None:
+    monkeypatch.setenv("STORAGE_PUBLIC_ENDPOINT_URL", "http://127.0.0.1:9000")
+
+    response = TestClient(create_app()).get("/health")
+
+    assert "connect-src 'self' https: http://127.0.0.1:9000" in response.headers[
+        "content-security-policy"
+    ]
+
+
 def test_magic_link_script_consumes_fragment_without_client_storage() -> None:
     script = (Path(__file__).parents[1] / "static" / "auth.js").read_text(encoding="utf-8")
 
@@ -196,6 +206,34 @@ def test_public_invite_requires_consent_and_opens_email_access(public_client) ->
     access_page = client.get(accepted.headers["location"])
     assert access_page.status_code == 200
     assert 'name="email"' in access_page.text
+
+
+def test_local_browser_null_origin_is_allowed_for_consent(monkeypatch, public_workspace) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    client = TestClient(create_app())
+
+    response = client.post(
+        f"/i/{public_workspace}/consent",
+        data={"consent": "on"},
+        headers={"origin": "null"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+
+def test_null_origin_is_rejected_outside_local_mode(monkeypatch, public_workspace) -> None:
+    monkeypatch.setenv("APP_ENV", "staging")
+    client = TestClient(create_app())
+
+    response = client.post(
+        f"/i/{public_workspace}/consent",
+        data={"consent": "on"},
+        headers={"origin": "null"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "invalid origin"}
 
 
 def test_email_access_requires_consent(public_client) -> None:
@@ -390,6 +428,31 @@ def test_authenticated_questionnaire_post_saves_and_redirects(authenticated_clie
     assert resumed.status_code == 200
     assert "Даже если нет, оставляю пояснение" in resumed.text
     assert 'name="revision" value="1"' in resumed.text
+
+
+def test_questionnaire_post_invalid_answers_renders_form_error(authenticated_client) -> None:
+    client, token = authenticated_client
+    csrf = build_csrf_token(
+        parse_session_token(token).session_id,
+        "dev-only-app-secret-key-not-for-production-change-me",
+    )
+
+    response = client.post(
+        "/q/personal_data",
+        data={
+            "csrf_token": csrf,
+            "revision": "0",
+            "section_key": "personal_data",
+        },
+        headers={"origin": "http://testserver"},
+        cookies={SESSION_COOKIE_NAME: token},
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Проверьте обязательные поля и ответы" in response.text
+    assert '"detail":"invalid answers"' not in response.text
+    assert "Личные данные" in response.text
 
 
 def test_questionnaire_template_labels_final_action_as_review() -> None:

@@ -46,9 +46,12 @@ def test_questionnaire_template_is_russian_semantic_and_wide() -> None:
     assert 'id="main-content"' in html
     assert 'aria-label="Навигация по анкете"' in html
     assert html.count('class="question-card"') == 6
+    assert 'class="question-heading"' in html
+    assert "<legend" not in html
     assert 'type="radio"' in html
     assert 'name="cravings__comment"' in html
     assert "width: min(100%, 65rem)" in css
+    assert ".question-heading" in css
     assert "grid-template-columns: 1fr" in css
     assert "prefers-reduced-motion" in css
 

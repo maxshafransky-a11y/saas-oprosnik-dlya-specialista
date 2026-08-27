@@ -79,6 +79,43 @@ def test_adapter_signs_put_get_heads_and_deletes_without_network() -> None:
     assert client.delete_calls == [{"Bucket": "private-health", "Key": "quarantine/object"}]
 
 
+def test_presigning_can_use_public_client_without_changing_internal_operations() -> None:
+    internal_client = RecordingClient()
+    public_client = RecordingClient()
+    adapter = storage.S3Storage(
+        "private-health",
+        client=internal_client,
+        presign_client=public_client,
+    )
+
+    adapter.presign_put("quarantine/object", "application/pdf", 42, 600)
+    adapter.presign_get("quarantine/object", 300)
+    adapter.head("quarantine/object")
+    adapter.delete("quarantine/object")
+
+    assert len(public_client.presign_calls) == 2
+    assert internal_client.presign_calls == []
+    assert internal_client.head_calls == [
+        {"Bucket": "private-health", "Key": "quarantine/object"}
+    ]
+    assert internal_client.delete_calls == [
+        {"Bucket": "private-health", "Key": "quarantine/object"}
+    ]
+
+
+def test_empty_public_endpoint_reuses_internal_client(monkeypatch) -> None:
+    def unexpected_client(*args, **kwargs):
+        raise AssertionError("empty public endpoint must not create another client")
+
+    monkeypatch.setattr(storage.boto3, "client", unexpected_client)
+    client = RecordingClient()
+    adapter = storage.S3Storage("private-health", client=client, public_endpoint_url="")
+
+    adapter.presign_get("quarantine/object", 300)
+
+    assert len(client.presign_calls) == 1
+
+
 def test_head_maps_provider_not_found_to_safe_missing_signal() -> None:
     adapter = storage.S3Storage("private-health", client=MissingClient())
 

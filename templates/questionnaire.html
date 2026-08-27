@@ -2,6 +2,7 @@
   {% set answer = state.answers.get(question.key) or {} %}
   {{ answer }}
 {%- endmacro %}
+{% set form_error = error|default(None) %}
 <!doctype html>
 <html lang="ru">
   <head>
@@ -66,10 +67,11 @@
 
           <form class="questionnaire-form" method="post" action=""
                 data-questionnaire-form data-section-key="{{ active_section.key }}"
-                data-revision="{{ state.current_revision }}" novalidate>
+                data-revision="{{ state.current_revision }}"{% if form_error %} aria-describedby="questionnaire-error"{% endif %}>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="revision" value="{{ state.current_revision }}">
             <input type="hidden" name="section_key" value="{{ active_section.key }}">
+            {% if form_error %}<p class="form-error" id="questionnaire-error" role="alert">{{ form_error }}</p>{% endif %}
 
             {% for question in active_section.questions %}
               {% set visible = not question.condition or (state.answers.get(question.condition.question_key) or {}).get("value") == question.condition.equals %}
@@ -77,14 +79,15 @@
                 {% set answer = state.answers.get(question.key) or {} %}
                 {% set answer_value = answer.get("value", "") %}
                 {% set answer_comment = answer.get("comment", "") %}
-                <fieldset class="question-card" data-question-key="{{ question.key }}"
-                          data-question-type="{{ question.type }}"
-                          data-comment-enabled="{{ 'true' if question.comment_enabled else 'false' }}">
-                <legend>
+                <section class="question-card" data-question-key="{{ question.key }}"
+                         data-question-type="{{ question.type }}"
+                         data-comment-enabled="{{ 'true' if question.comment_enabled else 'false' }}"
+                         aria-labelledby="{{ question.key }}-heading">
+                <h3 class="question-heading" id="{{ question.key }}-heading">
                   <span class="question-number">{{ "%02d"|format(question.source_number) }}</span>
                   <span class="question-label">{{ question.label }}</span>
                   {% if question.required %}<span class="required-mark" title="Обязательный вопрос">*</span>{% endif %}
-                </legend>
+                </h3>
 
                 {% if question.helper %}
                   <p class="question-helper">{{ question.helper }}</p>
@@ -163,7 +166,7 @@
                               name="{{ question.key }}__comment" data-comment-field rows="2">{{ answer_comment }}</textarea>
                   </div>
                 {% endif %}
-                </fieldset>
+                </section>
               {% endif %}
             {% endfor %}
 

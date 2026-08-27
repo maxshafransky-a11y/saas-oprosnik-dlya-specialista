@@ -101,7 +101,14 @@ def create_app(
     @application.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
-        for name, value in SECURITY_HEADERS.items():
+        headers = dict(SECURITY_HEADERS)
+        public_storage_endpoint = os.environ.get("STORAGE_PUBLIC_ENDPOINT_URL", "").strip()
+        if public_storage_endpoint:
+            headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace(
+                "connect-src 'self' https:",
+                f"connect-src 'self' https: {public_storage_endpoint}",
+            )
+        for name, value in headers.items():
             response.headers.setdefault(name, value)
         if os.environ.get("APP_ENV", "development").strip().casefold() in {
             "staging",
@@ -173,8 +180,19 @@ def create_app(
     def request_id(request: Request) -> str:
         return request.headers.get("x-request-id") or uuid4().hex
 
+    def request_origin_is_valid(request: Request) -> bool:
+        origin = request.headers.get("origin")
+        if origin is None:
+            return True
+        if origin == "null":
+            return os.environ.get("APP_ENV", "development").strip().casefold() in {
+                "development",
+                "test",
+            }
+        return origin == str(request.base_url).rstrip("/")
+
     def require_state_change(request: Request, context: AuthenticatedRequest, candidate: str):
-        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+        if not request_origin_is_valid(request):
             raise HTTPException(status_code=403, detail="invalid origin")
         if not valid_csrf_token(
             context.principal.session_id,
@@ -373,7 +391,7 @@ def create_app(
     @application.post("/i/{public_slug}/consent", name="accept_consent")
     async def accept_consent(request: Request, public_slug: str):
         workspace = access_workspace(public_slug)
-        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+        if not request_origin_is_valid(request):
             raise HTTPException(status_code=403, detail="invalid origin")
         form = await request.form()
         if form.get("consent") != "on":
@@ -472,7 +490,7 @@ def create_app(
 
     @application.post("/auth/code", name="authenticate_code")
     async def authenticate_code(request: Request):
-        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+        if not request_origin_is_valid(request):
             raise HTTPException(status_code=403, detail="invalid origin")
         form = await request.form()
         public_slug = form_text(form.get("public_slug"))
@@ -523,7 +541,7 @@ def create_app(
 
     @application.post("/auth/magic", name="authenticate_magic")
     async def authenticate_magic(request: Request):
-        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+        if not request_origin_is_valid(request):
             raise HTTPException(status_code=403, detail="invalid origin")
         form = await request.form()
         token = form_text(form.get("token"))
@@ -735,6 +753,9 @@ def create_app(
         request: Request,
         context: AuthenticatedRequest,
         requested_section: str | None,
+        *,
+        error: str | None = None,
+        status_code: int = 200,
     ):
         questionnaire_template = load_questionnaire()
         sections = questionnaire_template.sections
@@ -770,6 +791,7 @@ def create_app(
                 "active_section": active_section,
                 "active_section_index": active_index + 1,
                 "section_intro": questionnaire_template.intro,
+                "error": error,
                 "state": view_state,
                 "documents": documents,
                 "csrf_token": build_csrf_token(
@@ -777,6 +799,7 @@ def create_app(
                     get_settings().app_secret_key.get_secret_value(),
                 ),
             },
+            status_code=status_code,
         )
 
     @application.get("/questionnaire", name="questionnaire")
@@ -801,7 +824,7 @@ def create_app(
         requested_section: str | None,
     ):
         form = await request.form()
-        if request.headers.get("origin") not in {None, str(request.base_url).rstrip("/")}:
+        if not request_origin_is_valid(request):
             raise HTTPException(status_code=403, detail="invalid origin")
         if not valid_csrf_token(
             context.principal.session_id,
@@ -838,7 +861,13 @@ def create_app(
                 status_code=409, detail="answers changed; reload and retry"
             ) from None
         except (TypeError, ValueError):
-            raise HTTPException(status_code=422, detail="invalid answers") from None
+            return render_questionnaire(
+                request,
+                context,
+                active_key,
+                error="Проверьте обязательные поля и ответы.",
+                status_code=422,
+            )
 
         context.session.commit()
         if active_index == len(template.sections) - 1:

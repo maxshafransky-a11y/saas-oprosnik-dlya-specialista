@@ -1,0 +1,144 @@
+# Только локальная разработка и E2E. Не использовать эти credentials в production.
+
+x-local-image: &local-image
+  image: health-intake-local:dev
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+x-local-environment: &local-environment
+  APP_ENV: development
+  APP_SECRET_KEY: ${APP_SECRET_KEY:-local-health-intake-secret-change-me-1234567890}
+  DATABASE_URL: postgresql+psycopg://health_app:health_app_dev_only@postgres:5432/health_intake
+  DATABASE_OWNER_URL: postgresql+psycopg://health_owner:health_owner_dev_only@postgres:5432/health_intake
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:8000}
+  SMTP_HOST: mailpit
+  SMTP_PORT: 1025
+  SMTP_USERNAME: ""
+  SMTP_PASSWORD: local-only
+  SMTP_FROM: intake@example.test
+  SMTP_STARTTLS: "false"
+  STORAGE_BUCKET: ${STORAGE_BUCKET:-health-intake-local}
+  # The app uses the internal endpoint; the browser uses the public endpoint below.
+  STORAGE_ENDPOINT_URL: http://minio:9000
+  STORAGE_PUBLIC_ENDPOINT_URL: http://127.0.0.1:9000
+  STORAGE_REGION: us-east-1
+  STORAGE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-health_intake_local}
+  STORAGE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-health_intake_local_secret_123456789}
+  SCAN_WORKSPACE_ID: ${SCAN_WORKSPACE_ID:-11111111-1111-4111-8111-111111111111}
+  SCAN_POLL_SECONDS: 2
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: 3310
+  CLAMAV_TIMEOUT_SECONDS: 60
+
+x-local-app-depends-on: &local-app-depends-on
+  postgres:
+    condition: service_healthy
+  clamav:
+    condition: service_healthy
+  mailpit:
+    condition: service_started
+  minio-init:
+    condition: service_completed_successfully
+  local-migrate:
+    condition: service_completed_successfully
+  local-seed:
+    condition: service_completed_successfully
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.31.0
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 5000
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+    volumes:
+      - health_intake_mailpit_data:/data
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-health_intake_local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-health_intake_local_secret_123456789}
+      MINIO_API_CORS_ALLOW_ORIGIN: http://127.0.0.1:8000,http://localhost:8000
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - health_intake_minio_data:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+    entrypoint: ["/bin/sh", "-ec"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-health_intake_local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-health_intake_local_secret_123456789}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-health-intake-local}
+    command:
+      - |
+        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" >/dev/null 2>&1; do
+          sleep 1
+        done
+        mc mb --ignore-existing "local/$${STORAGE_BUCKET}"
+    depends_on:
+      minio:
+        condition: service_started
+    restart: "no"
+
+  local-migrate:
+    <<: *local-image
+    environment:
+      <<: *local-environment
+    command: ["/app/.venv/bin/alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  local-seed:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-health_intake}
+      POSTGRES_USER: ${POSTGRES_USER:-health_owner}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-health_owner_dev_only}
+      LOCAL_WORKSPACE_ID: ${SCAN_WORKSPACE_ID:-11111111-1111-4111-8111-111111111111}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        psql -v ON_ERROR_STOP=1 -h postgres -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" \
+          -c "INSERT INTO workspaces (id, name, public_slug, status, created_at)
+              VALUES ('$${LOCAL_WORKSPACE_ID}', 'Local test workspace', 'local-test', 'active', now())
+              ON CONFLICT (id) DO NOTHING;"
+    depends_on:
+      local-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  web:
+    <<: *local-image
+    environment:
+      <<: *local-environment
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    depends_on: *local-app-depends-on
+    restart: unless-stopped
+
+  scan-worker:
+    <<: *local-image
+    command: ["/app/.venv/bin/python", "-m", "app.scan_worker"]
+    environment:
+      <<: *local-environment
+    depends_on: *local-app-depends-on
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+
+volumes:
+  health_intake_mailpit_data:
+  health_intake_minio_data:

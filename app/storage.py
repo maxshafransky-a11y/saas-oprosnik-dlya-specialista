@@ -42,6 +42,7 @@ class S3Storage:
         return cls(
             settings.storage_bucket,
             endpoint_url=settings.storage_endpoint_url,
+            public_endpoint_url=settings.storage_public_endpoint_url,
             region_name=settings.storage_region,
             access_key_id=(
                 settings.storage_access_key_id.get_secret_value()
@@ -60,7 +61,9 @@ class S3Storage:
         bucket: str,
         *,
         client: Any | None = None,
+        presign_client: Any | None = None,
         endpoint_url: str | None = None,
+        public_endpoint_url: str | None = None,
         region_name: str | None = None,
         access_key_id: str | None = None,
         secret_access_key: str | None = None,
@@ -68,19 +71,28 @@ class S3Storage:
         if not isinstance(bucket, str) or not bucket.strip():
             raise ValueError("storage bucket is required")
         self.bucket = bucket.strip()
+        client_kwargs = {
+            key: value
+            for key, value in {
+                "endpoint_url": endpoint_url,
+                "region_name": region_name,
+                "aws_access_key_id": access_key_id,
+                "aws_secret_access_key": secret_access_key,
+            }.items()
+            if value is not None
+        }
         if client is None:
-            client_kwargs = {
-                key: value
-                for key, value in {
-                    "endpoint_url": endpoint_url,
-                    "region_name": region_name,
-                    "aws_access_key_id": access_key_id,
-                    "aws_secret_access_key": secret_access_key,
-                }.items()
-                if value is not None
-            }
             client = boto3.client("s3", **client_kwargs)
         self._client = client
+        if presign_client is not None:
+            self._presign_client = presign_client
+        elif public_endpoint_url and public_endpoint_url != endpoint_url:
+            self._presign_client = boto3.client(
+                "s3",
+                **{**client_kwargs, "endpoint_url": public_endpoint_url},
+            )
+        else:
+            self._presign_client = client
 
     def presign_put(
         self, object_key: str, content_type: str, content_length: int, expires_seconds: int
@@ -100,7 +112,7 @@ class S3Storage:
         ):
             raise ValueError("content length is invalid")
         expiry = _validate_ttl(expires_seconds)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             "put_object",
             Params={
                 "Bucket": self.bucket,
@@ -114,7 +126,7 @@ class S3Storage:
     def presign_get(self, object_key: str, expires_seconds: int) -> str:
         key = _validate_key(object_key)
         expiry = _validate_ttl(expires_seconds)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=expiry,
